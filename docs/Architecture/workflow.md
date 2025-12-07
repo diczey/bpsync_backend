@@ -49,6 +49,6 @@
 
 Everything should be:
 
-- Traceable!
-- Measurable!
-- Reviewable!
+- Traceable
+- Measurable
+- Reviewable
