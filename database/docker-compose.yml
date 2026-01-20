@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: bpsync-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: bpsync
+      POSTGRES_USER: bpsync_app
+      POSTGRES_PASSWORD: bpsync_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
