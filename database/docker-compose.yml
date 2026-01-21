@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:16
-    container_name: bpsync-postgres
     restart: always
     environment:
       POSTGRES_DB: bpsync
@@ -12,5 +11,18 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    restart: always
+    environment:
+      POSTGRES_DB: bpsync_sensor
+      POSTGRES_USER: bpsync_sensor_app
+      POSTGRES_PASSWORD: bpsync_sensor_password
+    ports:
+      - "5434:5432"
+    volumes:
+      - tsdata:/var/lib/postgresql/data
+
 volumes:
   pgdata:
+  tsdata:

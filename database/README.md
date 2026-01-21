@@ -1,4 +1,4 @@
-## Database
+## Database #1
 
 See database setup guide: [database/README.md](database/README.md)
 
@@ -29,3 +29,40 @@ installing PostgreSQL manually on Windows.
 - Docker Desktop installed and running
 - Git installed
 - Repository pulled from GitLab
+
+## Database #2
+
+## TimescaleDB (Sensor Time-Series Database)
+
+We use **TimescaleDB** to store high-frequency sensor data (time-series), such as:
+- ECG waveforms
+- PPG waveforms
+- IMU (accelerometer/gyro)
+- Temperature (if applicable)
+
+TimescaleDB is optimized for time-based queries, compression, retention policies, and aggregation
+(time-bucketing). This prevents the main PostgreSQL database from becoming too large and slow.
+
+## TimescaleDB Connection Details
+
+Host: localhost
+
+Port: 5434
+
+Database: bpsync_sensor
+
+Username: bpsync
+
+Password: BPSync2026 
+
+## Postgreql Connection Details
+
+Host: localhost
+
+Port: 5432
+
+Database: bpsync_sensor
+
+Username: bpsync
+
+Password: BPSync2026 
