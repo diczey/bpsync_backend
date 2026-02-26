@@ -8,7 +8,7 @@ Bu script backend sunucusunu baslatir.
 API dokumantasyonu: http://localhost:8000/docs
 """
 import uvicorn
-from app.config import settings
+from backend.app.config import settings
 
 
 if __name__ == "__main__":

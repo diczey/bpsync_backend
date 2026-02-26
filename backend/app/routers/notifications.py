@@ -5,13 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from app.database import get_db
-from app.models.user import User
-from app.models.notification import Notification
-from app.schemas.notifications import NotificationsResponse, NotificationDto
-from app.utils.security import get_current_user
-from app.utils.mock_data import generate_notifications
-from app.config import settings
+from backend.app.database import get_db
+from backend.app.models.user import User
+from backend.app.models.notification import Notification
+from backend.app.schemas.notifications import NotificationsResponse, NotificationDto
+from backend.app.utils.security import get_current_user
+from backend.app.utils.mock_data import generate_notifications
+from backend.app.config import settings
 
 router = APIRouter()
 

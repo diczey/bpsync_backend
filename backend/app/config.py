@@ -20,7 +20,9 @@ class Settings(BaseSettings):
     
     # Database (PostgreSQL - database klasorundan)
     database_url: str = "postgresql://bpsync_app:bpsync_password@localhost:5432/bpsync"
-    
+    # TimescaleDB (Sensor DB)
+    sensor_database_url: str = "postgresql://bpsync_sensor_app:bpsync_sensor_password@timescaledb:5432/bpsync_sensor"
+
     # JWT Authentication
     secret_key: str = "your-super-secret-key-change-this-in-production"
     algorithm: str = "HS256"

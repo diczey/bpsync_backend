@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """XGBoost Model Test Script"""
 
-from app.services.ml_service import get_bp_model
+from backend.app.services.ml_service import get_bp_model
 
 model = get_bp_model()
 print("=== XGBoost Model Durumu ===")

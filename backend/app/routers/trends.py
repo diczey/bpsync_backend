@@ -5,12 +5,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from app.database import get_db
-from app.models.user import User
-from app.schemas.trends import TrendResponse, TrendDataDto, TrendDataPoint
-from app.utils.security import get_current_user
-from app.utils.mock_data import generate_trend_data
-from app.config import settings
+from backend.app.database import get_db
+from backend.app.models.user import User
+from backend.app.schemas.trends import TrendResponse, TrendDataDto, TrendDataPoint
+from backend.app.utils.security import get_current_user
+from backend.app.utils.mock_data import generate_trend_data
+from backend.app.config import settings
 
 router = APIRouter()
 

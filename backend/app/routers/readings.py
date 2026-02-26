@@ -7,18 +7,18 @@ from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel
 
-from app.database import get_db
-from app.models.user import User
-from app.models.health_reading import HealthReading
-from app.schemas.health import (
+from backend.app.database import get_db
+from backend.app.models.user import User
+from backend.app.models.health_reading import HealthReading
+from backend.app.schemas.health import (
     HealthReadingDto, 
     HealthReadingCreate, 
     HealthReadingsResponse
 )
-from app.utils.security import get_current_user
-from app.utils.mock_data import generate_historical_readings
-from app.config import settings
-from app.services.ml_service import get_bp_model, predict_blood_pressure
+from backend.app.utils.security import get_current_user
+from backend.app.utils.mock_data import generate_historical_readings
+from backend.app.config import settings
+from backend.app.services.ml_service import get_bp_model, predict_blood_pressure
 
 router = APIRouter()
 
