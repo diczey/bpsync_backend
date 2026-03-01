@@ -5,7 +5,7 @@ from sqlalchemy import Column, String, BigInteger, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 import uuid
 
-from app.database import Base
+from backend.app.database import Base
 
 
 class Notification(Base):

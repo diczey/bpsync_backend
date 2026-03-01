@@ -8,11 +8,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.config import settings
-from app.database import create_tables
+from backend.app.config import settings
+from backend.app.database import create_tables
 
 # Import routers
-from app.routers import auth, dashboard, readings, trends, reports, notifications, profile
+from backend.app.routers import auth, dashboard, readings, trends, reports, notifications, profile, sensor
 
 
 @asynccontextmanager
@@ -66,6 +66,7 @@ app.include_router(trends.router, prefix="/trends", tags=["Trends"])
 app.include_router(reports.router, prefix="/reports", tags=["Reports"])
 app.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 app.include_router(profile.router, prefix="/profile", tags=["Profile"])
+app.include_router(sensor.router)
 
 
 @app.get("/", tags=["Root"])

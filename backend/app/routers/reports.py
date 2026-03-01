@@ -4,16 +4,16 @@ Reports Router - Weekly and Monthly Reports
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.models.user import User
-from app.schemas.reports import (
+from backend.app.database import get_db
+from backend.app.models.user import User
+from backend.app.schemas.reports import (
     WeeklyReportResponse, 
     WeeklyReportDto, 
     DailySummaryDto
 )
-from app.utils.security import get_current_user
-from app.utils.mock_data import generate_weekly_report
-from app.config import settings
+from backend.app.utils.security import get_current_user
+from backend.app.utils.mock_data import generate_weekly_report
+from backend.app.config import settings
 
 router = APIRouter()
 

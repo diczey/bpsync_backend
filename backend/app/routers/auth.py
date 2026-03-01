@@ -5,16 +5,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from datetime import timedelta
 
-from app.database import get_db
-from app.models.user import User
-from app.schemas.auth import LoginRequest, LoginResponse, UserDto
-from app.utils.security import (
+from backend.app.database import get_db
+from backend.app.models.user import User
+from backend.app.schemas.auth import LoginRequest, LoginResponse, UserDto
+from backend.app.utils.security import (
     verify_password, 
     get_password_hash, 
     create_access_token,
     get_current_user
 )
-from app.config import settings
+from backend.app.config import settings
 
 router = APIRouter()
 

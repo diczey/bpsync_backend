@@ -4,10 +4,10 @@ Profile Router - User Profile Management
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.models.user import User
-from app.schemas.auth import ProfileResponse, ProfileUpdateRequest, UserDto
-from app.utils.security import get_current_user
+from backend.app.database import get_db
+from backend.app.models.user import User
+from backend.app.schemas.auth import ProfileResponse, ProfileUpdateRequest, UserDto
+from backend.app.utils.security import get_current_user
 
 router = APIRouter()
 

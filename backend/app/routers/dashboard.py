@@ -4,13 +4,13 @@ Dashboard Router - Dashboard Summary
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.models.user import User
-from app.models.health_reading import HealthReading
-from app.schemas.dashboard import DashboardResponse, DashboardSummaryDto
-from app.utils.security import get_current_user
-from app.utils.mock_data import generate_dashboard_summary
-from app.config import settings
+from backend.app.database import get_db
+from backend.app.models.user import User
+from backend.app.models.health_reading import HealthReading
+from backend.app.schemas.dashboard import DashboardResponse, DashboardSummaryDto
+from backend.app.utils.security import get_current_user
+from backend.app.utils.mock_data import generate_dashboard_summary
+from backend.app.config import settings
 
 router = APIRouter()
 
