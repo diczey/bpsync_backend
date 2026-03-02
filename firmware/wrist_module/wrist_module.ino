@@ -7,20 +7,29 @@
  * ║            nrf52840  (same chip, Adafruit core workaround)  ║
  * ║  BLE API : Adafruit Bluefruit (built-in, no extra lib)      ║
  * ╠══════════════════════════════════════════════════════════════╣
- * ║  SENSÖRLER (all I2C — SDA=D4, SCL=D5)                      ║
+ * ║  SENSORS (all I2C — SDA=D4, SCL=D5)                        ║
  * ║    MAX30102  @ 0x57  →  PPG (IR + Red)                     ║
  * ║    MPU6050   @ 0x68  →  Wrist Accelerometer + Gyroscope    ║
  * ║    MCP9808   @ 0x18  →  Skin Temperature                   ║
  * ╠══════════════════════════════════════════════════════════════╣
- * ║  BLE PERIPHERAL  →  Telefon bağlanır                       ║
+ * ║  HARDWARE I/O (GPIO)                                        ║
+ * ║    LED @ D3  →  Status indicator (4 blink modes)           ║
+ * ║               Slow blink : advertising (no phone)           ║
+ * ║               Fast blink : phone connected, idle            ║
+ * ║               Solid ON   : streaming + good signal          ║
+ * ║               Double blink : streaming + poor signal        ║
+ * ║    BTN @ D2  →  Short press : START / STOP streaming        ║
+ * ║               Long press (3 s) : BLE reset + re-advertise  ║
+ * ╠══════════════════════════════════════════════════════════════╣
+ * ║  BLE PERIPHERAL  →  Phone connects                          ║
  * ║    Service  : 19B10000-E8F2-537E-4F6C-D104768A1214         ║
- * ║    DataChar : 19B10001-…  (Notify, 256 B) — JSON gönderir  ║
+ * ║    DataChar : 19B10001-…  (Notify, 256 B) — sends JSON     ║
  * ║    CmdChar  : 19B10002-…  (Write,   20 B) — START/STOP     ║
  * ╠══════════════════════════════════════════════════════════════╣
- * ║  BLE CENTRAL  →  Chest modülüne bağlanır                   ║
- * ║    Cihaz adı: "BPSync-Chest"                               ║
+ * ║  BLE CENTRAL  →  Connects to Chest module                   ║
+ * ║    Device name: "BPSync-Chest"                              ║
  * ║    Service  : 29B10000-E8F2-537E-4F6C-D104768A1214         ║
- * ║    DataChar : 29B10001-…  (Notify) — ChestPacket alır      ║
+ * ║    DataChar : 29B10001-…  (Notify) — receives ChestPacket  ║
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  JSON FRAME (~175 bytes)                                    ║
  * ║  {"ts":ms,"sq":n,                                           ║
@@ -31,11 +40,11 @@
  * ║   "cx":,"cy":,"cz":,            ← Chest IMU (chest)        ║
  * ║   "qi_w":0|1,                   ← Wrist SQI               ║
  * ║   "qi_c":0|1,                   ← Chest SQI (chest)       ║
- * ║   "qi":0|1,                     ← Kombine (qi_w AND qi_c) ║
+ * ║   "qi":0|1,                     ← Combined (qi_w AND qi_c) ║
  * ║   "bt":100}                                                 ║
  * ╠══════════════════════════════════════════════════════════════╣
- * ║  NOT: Chest bağlı değilken ep/cx/cy/cz/qi_c = 0,           ║
- * ║       qi = qi_w  (wrist-only mod)                           ║
+ * ║  NOTE: When Chest is not connected ep/cx/cy/cz/qi_c = 0,   ║
+ * ║        qi = qi_w  (wrist-only mode)                         ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
@@ -49,7 +58,7 @@
 #include <Adafruit_MCP9808.h>
 
 // ──────────────────────────────────────────────────────────────
-//  BLE PERIPHERAL — Telefon
+//  BLE PERIPHERAL — Phone
 // ──────────────────────────────────────────────────────────────
 #define DEVICE_NAME        "BPSync-Wrist"
 #define WRIST_SERVICE_UUID "19B10000-E8F2-537E-4F6C-D104768A1214"
@@ -57,14 +66,20 @@
 #define CMD_CHAR_UUID      "19B10002-E8F2-537E-4F6C-D104768A1214"
 
 // ──────────────────────────────────────────────────────────────
-//  BLE CENTRAL — Chest Modülü
+//  BLE CENTRAL — Chest Module
 // ──────────────────────────────────────────────────────────────
 #define CHEST_DEVICE_NAME  "BPSync-Chest"
 #define CHEST_SERVICE_UUID "29B10000-E8F2-537E-4F6C-D104768A1214"
 #define CHEST_DATA_UUID    "29B10001-E8F2-537E-4F6C-D104768A1214"
 
 // ──────────────────────────────────────────────────────────────
-//  ÖRNEKLEME ARALIKLARI
+//  HARDWARE PINS
+// ──────────────────────────────────────────────────────────────
+#define LED_PIN   D3   // Status LED
+#define BTN_PIN   D2   // User button (INPUT_PULLUP)
+
+// ──────────────────────────────────────────────────────────────
+//  SAMPLING INTERVALS
 // ──────────────────────────────────────────────────────────────
 #define PPG_INTERVAL_MS    10      // 100 Hz
 #define IMU_INTERVAL_MS    20      //  50 Hz
@@ -72,42 +87,42 @@
 #define BLE_TX_INTERVAL_MS 100     //  10 Hz
 
 // ──────────────────────────────────────────────────────────────
-//  SQI EŞİKLERİ
+//  SQI THRESHOLDS
 // ──────────────────────────────────────────────────────────────
-#define SQI_MOTION_THRESHOLD  4096   // ~0.25 g sapma (16384 = 1g)
-#define SQI_PPG_MIN           1000   // IR < bu → bilek/parmak yok
+#define SQI_MOTION_THRESHOLD  4096   // ~0.25 g deviation (16384 = 1g)
+#define SQI_PPG_MIN           1000   // IR < this → no wrist/finger contact
 
 // ──────────────────────────────────────────────────────────────
-//  CHEST VERİ PAKETİ
-//  Bu struct chest firmware ile eşleşmeli (8 byte, packed)
+//  CHEST DATA PACKET
+//  Must match chest firmware struct (8 byte, packed)
 // ──────────────────────────────────────────────────────────────
 struct __attribute__((packed)) ChestPacket {
-    uint8_t  ep;            // ECG R-peak algılandı (0/1)
-    int16_t  cx, cy, cz;   // Chest ivme (ham, ±2g → 16384=1g)
+    uint8_t  ep;            // ECG R-peak detected (0/1)
+    int16_t  cx, cy, cz;   // Chest acceleration (raw, ±2g → 16384=1g)
     uint8_t  qi_c;          // Chest SQI (0/1)
-};  // Toplam: 8 byte
+};  // Total: 8 bytes
 
 // ──────────────────────────────────────────────────────────────
-//  BLE NESNELERİ
+//  BLE OBJECTS
 // ──────────────────────────────────────────────────────────────
-// Peripheral (telefon)
+// Peripheral (phone)
 BLEService        wristSvc(WRIST_SERVICE_UUID);
 BLECharacteristic dataChar(DATA_CHAR_UUID);
 BLECharacteristic cmdChar(CMD_CHAR_UUID);
 
-// Central (chest modülü)
+// Central (chest module)
 BLEClientService        chestSvc(CHEST_SERVICE_UUID);
 BLEClientCharacteristic chestDataChar(CHEST_DATA_UUID);
 
 // ──────────────────────────────────────────────────────────────
-//  SENSÖR NESNELERİ
+//  SENSOR OBJECTS
 // ──────────────────────────────────────────────────────────────
 MAX30105         ppgSensor;
 MPU6050          imu;
 Adafruit_MCP9808 tempSensor;
 
 // ──────────────────────────────────────────────────────────────
-//  WRIST SENSÖR VERİSİ
+//  WRIST SENSOR DATA
 // ──────────────────────────────────────────────────────────────
 uint32_t ppg_ir  = 0;
 uint32_t ppg_red = 0;
@@ -117,21 +132,48 @@ float    temperature = 0.0f;
 uint8_t  qi_w = 0;          // Wrist SQI
 
 // ──────────────────────────────────────────────────────────────
-//  CHEST VERİSİ  (chest bağlanınca dolar, yoksa 0)
+//  CHEST DATA  (filled when chest connects, else 0)
 // ──────────────────────────────────────────────────────────────
 uint8_t  ep   = 0;          // ECG R-peak
-int16_t  cx   = 0, cy = 0, cz = 0;  // Chest ivme
+int16_t  cx   = 0, cy = 0, cz = 0;  // Chest acceleration
 uint8_t  qi_c = 0;          // Chest SQI
 
 // ──────────────────────────────────────────────────────────────
-//  OTURUM DURUMU
+//  SESSION STATE
 // ──────────────────────────────────────────────────────────────
 uint16_t seqNum         = 0;
 bool     streaming      = false;
 bool     chestConnected = false;
 
 // ──────────────────────────────────────────────────────────────
-//  ZAMANLAYICILAR
+//  LED STATE MACHINE
+// ──────────────────────────────────────────────────────────────
+enum LedMode {
+    LED_BLINK_SLOW,   // Advertising — 1 Hz
+    LED_BLINK_FAST,   // Connected but not streaming — 4 Hz
+    LED_SOLID,        // Streaming + good signal
+    LED_BLINK_SQI,    // Streaming + poor signal — double blink
+};
+
+LedMode       ledMode       = LED_BLINK_SLOW;
+unsigned long tLed          = 0;
+bool          ledState      = false;
+uint8_t       sqiBlinkPhase = 0;   // phase counter for double blink
+
+// ──────────────────────────────────────────────────────────────
+//  BUTTON DEBOUNCE & LONG PRESS
+// ──────────────────────────────────────────────────────────────
+#define BTN_DEBOUNCE_MS   50
+#define BTN_LONG_PRESS_MS 3000
+
+bool          btnLastRaw  = HIGH;  // pullup → normally HIGH
+bool          btnStable   = HIGH;
+unsigned long tBtnChange  = 0;    // last raw change timestamp
+unsigned long tBtnPressed = 0;    // stable LOW transition timestamp
+bool          btnHandled  = false; // ensures long press fires only once
+
+// ──────────────────────────────────────────────────────────────
+//  TIMERS
 // ──────────────────────────────────────────────────────────────
 unsigned long tPPG  = 0;
 unsigned long tIMU  = 0;
@@ -139,18 +181,22 @@ unsigned long tTemp = 0;
 unsigned long tBLE  = 0;
 
 // ──────────────────────────────────────────────────────────────
-//  FONKSİYON PROTOTPLER
+//  FUNCTION PROTOTYPES
 // ──────────────────────────────────────────────────────────────
 void initSensors();
 void initBLE();
+void initHardware();
 void readPPG();
 void readIMU();
 void readTemperature();
 void calculateSQI();
 void buildJSON(char* buf, int bufSize);
 void sendToPhone();
+void updateLED();
+void handleButton();
+void setLedMode(LedMode mode);
 
-// Peripheral callbacks (telefon)
+// Peripheral callbacks (phone)
 void periph_connect_callback(uint16_t conn_handle);
 void periph_disconnect_callback(uint16_t conn_handle, uint8_t reason);
 void onCmdWrite(uint16_t conn_handle, BLECharacteristic* chr,
@@ -179,6 +225,7 @@ void setup() {
 
     Wire.begin();       // SDA=D4, SCL=D5
 
+    initHardware();
     initSensors();
     initBLE();
 
@@ -215,6 +262,142 @@ void loop() {
         sendToPhone();
         tBLE = now;
     }
+
+    handleButton();
+    updateLED();
+}
+
+
+// ══════════════════════════════════════════════════════════════
+//  initHardware — LED and Button pin setup
+// ══════════════════════════════════════════════════════════════
+void initHardware() {
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, LOW);
+
+    pinMode(BTN_PIN, INPUT_PULLUP);
+
+    Serial.println("[OK]    LED (D3) + Button (D2)");
+}
+
+
+// ══════════════════════════════════════════════════════════════
+//  setLedMode — change LED mode (called from outside)
+// ══════════════════════════════════════════════════════════════
+void setLedMode(LedMode mode) {
+    if (ledMode == mode) return;
+    ledMode       = mode;
+    sqiBlinkPhase = 0;
+    tLed          = 0;   // switch to new mode immediately
+}
+
+
+// ══════════════════════════════════════════════════════════════
+//  updateLED — called every loop, non-blocking blink
+//
+//  LED_BLINK_SLOW : 500 ms ON / 500 ms OFF  (1 Hz) — advertising
+//  LED_BLINK_FAST : 125 ms ON / 125 ms OFF  (4 Hz) — connected, idle
+//  LED_SOLID      : always ON               — streaming + good signal
+//  LED_BLINK_SQI  : double blink + long OFF — streaming + poor signal
+//                   ON 80ms / OFF 80ms / ON 80ms / OFF 760ms
+// ══════════════════════════════════════════════════════════════
+void updateLED() {
+    unsigned long now = millis();
+
+    switch (ledMode) {
+
+        case LED_BLINK_SLOW:
+            if (now - tLed >= 500) {
+                ledState = !ledState;
+                digitalWrite(LED_PIN, ledState ? HIGH : LOW);
+                tLed = now;
+            }
+            break;
+
+        case LED_BLINK_FAST:
+            if (now - tLed >= 125) {
+                ledState = !ledState;
+                digitalWrite(LED_PIN, ledState ? HIGH : LOW);
+                tLed = now;
+            }
+            break;
+
+        case LED_SOLID:
+            digitalWrite(LED_PIN, HIGH);
+            ledState = true;
+            break;
+
+        case LED_BLINK_SQI: {
+            // Phase: 0=1st ON  1=1st OFF  2=2nd ON  3=long OFF
+            static const uint16_t sqiTiming[4] = {80, 80, 80, 760};
+            if (now - tLed >= sqiTiming[sqiBlinkPhase]) {
+                sqiBlinkPhase = (sqiBlinkPhase + 1) % 4;
+                bool on = (sqiBlinkPhase == 0 || sqiBlinkPhase == 2);
+                digitalWrite(LED_PIN, on ? HIGH : LOW);
+                tLed = now;
+            }
+            break;
+        }
+    }
+}
+
+
+// ══════════════════════════════════════════════════════════════
+//  handleButton — called every loop
+//
+//  Short press (< 3 s) : Streaming toggle (START / STOP)
+//  Long press  (≥ 3 s) : Disconnect BLE, re-advertise
+// ══════════════════════════════════════════════════════════════
+void handleButton() {
+    unsigned long now = millis();
+    bool          raw = digitalRead(BTN_PIN);   // LOW = pressed (pullup)
+
+    // Debounce: consider stable if raw unchanged for 50 ms
+    if (raw != btnLastRaw) {
+        btnLastRaw = raw;
+        tBtnChange = now;
+    }
+
+    if ((now - tBtnChange) < BTN_DEBOUNCE_MS) return;  // not yet stable
+
+    // New stable LOW → press started
+    if (raw == LOW && btnStable == HIGH) {
+        btnStable   = LOW;
+        tBtnPressed = now;
+        btnHandled  = false;
+    }
+
+    // Check for long press while held down
+    if (raw == LOW && !btnHandled) {
+        if ((now - tBtnPressed) >= BTN_LONG_PRESS_MS) {
+            btnHandled = true;
+            Serial.println("[BTN] Long press — resetting BLE...");
+            Bluefruit.disconnect(Bluefruit.connHandle());
+            streaming = false;
+            setLedMode(LED_BLINK_SLOW);
+        }
+    }
+
+    // Release → trigger short press (skip if long press already handled)
+    if (raw == HIGH && btnStable == LOW) {
+        btnStable = HIGH;
+        if (!btnHandled) {
+            if (streaming) {
+                streaming = false;
+                setLedMode(Bluefruit.connected() ? LED_BLINK_FAST : LED_BLINK_SLOW);
+                Serial.println("[BTN] Short press — Streaming STOPPED");
+            } else {
+                if (Bluefruit.connected()) {
+                    streaming = true;
+                    seqNum    = 0;
+                    setLedMode(LED_SOLID);
+                    Serial.println("[BTN] Short press — Streaming STARTED");
+                } else {
+                    Serial.println("[BTN] Short press — phone not connected, streaming not started");
+                }
+            }
+        }
+    }
 }
 
 
@@ -225,8 +408,8 @@ void initSensors() {
 
     // ── MAX30102 (PPG) ───────────────────────────────────────
     if (!ppgSensor.begin(Wire, I2C_SPEED_FAST)) {
-        Serial.println("[ERROR] MAX30102 — bulunamadi!"
-                       "  Kontrol: VCC=3.3V, SDA=D4, SCL=D5");
+        Serial.println("[ERROR] MAX30102 — not found!"
+                       "  Check: VCC=3.3V, SDA=D4, SCL=D5");
     } else {
         ppgSensor.setup(0x1F, 4, 2, 100, 411, 4096);
         ppgSensor.setPulseAmplitudeRed(0x1F);
@@ -237,8 +420,8 @@ void initSensors() {
     // ── MPU6050 (Wrist IMU) ──────────────────────────────────
     imu.initialize();
     if (!imu.testConnection()) {
-        Serial.println("[ERROR] MPU6050 — bulunamadi!"
-                       "  Kontrol: VCC=3.3V, SDA=D4, SCL=D5, AD0=GND");
+        Serial.println("[ERROR] MPU6050 — not found!"
+                       "  Check: VCC=3.3V, SDA=D4, SCL=D5, AD0=GND");
     } else {
         imu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);   // ±2 g
         imu.setFullScaleGyroRange(MPU6050_GYRO_FS_250);   // ±250 °/s
@@ -247,8 +430,8 @@ void initSensors() {
 
     // ── MCP9808 (Temperature) ────────────────────────────────
     if (!tempSensor.begin(0x18)) {
-        Serial.println("[ERROR] MCP9808 — bulunamadi!"
-                       "  Kontrol: VCC=3.3V, SDA=D4, SCL=D5, A0=A1=A2=GND");
+        Serial.println("[ERROR] MCP9808 — not found!"
+                       "  Check: VCC=3.3V, SDA=D4, SCL=D5, A0=A1=A2=GND");
     } else {
         tempSensor.setResolution(3);
         tempSensor.wake();
@@ -259,14 +442,14 @@ void initSensors() {
 
 // ══════════════════════════════════════════════════════════════
 //  initBLE
-//  Bluefruit.begin(1, 1) → 1 peripheral (telefon) + 1 central (chest)
+//  Bluefruit.begin(1, 1) → 1 peripheral (phone) + 1 central (chest)
 // ══════════════════════════════════════════════════════════════
 void initBLE() {
     Bluefruit.begin(1, 1);   // peripheral=1, central=1
     Bluefruit.setName(DEVICE_NAME);
     Bluefruit.setTxPower(4);
 
-    // ── Peripheral: Telefon ───────────────────────────────────
+    // ── Peripheral: Phone ─────────────────────────────────────
     Bluefruit.Periph.setConnectCallback(periph_connect_callback);
     Bluefruit.Periph.setDisconnectCallback(periph_disconnect_callback);
 
@@ -292,9 +475,9 @@ void initBLE() {
     Bluefruit.Advertising.setFastTimeout(30);
     Bluefruit.Advertising.start(0);
 
-    Serial.println("[OK]    BLE Peripheral  (telefon — advertising)");
+    Serial.println("[OK]    BLE Peripheral  (phone — advertising)");
 
-    // ── Central: Chest Modülü ─────────────────────────────────
+    // ── Central: Chest Module ─────────────────────────────────
     Bluefruit.Central.setConnectCallback(central_connect_callback);
     Bluefruit.Central.setDisconnectCallback(central_disconnect_callback);
 
@@ -303,37 +486,39 @@ void initBLE() {
     chestDataChar.begin();
     chestDataChar.setNotifyCallback(chest_data_callback);
 
-    // İsme göre filtrele — UUID filtresi opsiyonel
+    // Filter by name — UUID filter optional
     Bluefruit.Scanner.setRxCallback(scan_callback);
     Bluefruit.Scanner.restartOnDisconnect(true);
     Bluefruit.Scanner.setInterval(160, 80);  // 100ms interval, 50ms window
     Bluefruit.Scanner.useActiveScan(false);
-    Bluefruit.Scanner.start(0);              // 0 = süresiz tara
+    Bluefruit.Scanner.start(0);              // 0 = scan indefinitely
 
     Serial.println("[OK]    BLE Central     (chest — scanning)");
 }
 
 
 // ══════════════════════════════════════════════════════════════
-//  PERİPHERAL CALLBACKS — Telefon
+//  PERIPHERAL CALLBACKS — Phone
 // ══════════════════════════════════════════════════════════════
 void periph_connect_callback(uint16_t conn_handle) {
     BLEConnection* conn = Bluefruit.Connection(conn_handle);
     char peer[32] = {0};
     conn->getPeerName(peer, sizeof(peer));
 
-    Serial.print("[PHONE] Bağlandı: ");
-    Serial.println(peer[0] ? peer : "(bilinmiyor)");
+    Serial.print("[PHONE] Connected: ");
+    Serial.println(peer[0] ? peer : "(unknown)");
 
     streaming = true;
     seqNum    = 0;
+    setLedMode(LED_SOLID);
 }
 
 void periph_disconnect_callback(uint16_t conn_handle, uint8_t reason) {
     (void)conn_handle;
     (void)reason;
     streaming = false;
-    Serial.println("[PHONE] Bağlantı kesildi — yeniden advertising...");
+    setLedMode(LED_BLINK_SLOW);
+    Serial.println("[PHONE] Disconnected — re-advertising...");
 }
 
 void onCmdWrite(uint16_t conn_handle, BLECharacteristic* chr,
@@ -352,23 +537,23 @@ void onCmdWrite(uint16_t conn_handle, BLECharacteristic* chr,
     if (strcmp(cmd, "START") == 0) {
         streaming = true;
         seqNum    = 0;
-        Serial.println("[SESSION] Streaming basladi");
+        Serial.println("[SESSION] Streaming started");
     } else if (strcmp(cmd, "STOP") == 0) {
         streaming = false;
-        Serial.println("[SESSION] Streaming durdu");
+        Serial.println("[SESSION] Streaming stopped");
     } else {
-        Serial.print("[CMD] Bilinmiyor: ");
+        Serial.print("[CMD] Unknown command: ");
         Serial.println(cmd);
     }
 }
 
 
 // ══════════════════════════════════════════════════════════════
-//  CENTRAL CALLBACKS — Chest Modülü
+//  CENTRAL CALLBACKS — Chest Module
 // ══════════════════════════════════════════════════════════════
 
-// BLE reklam paketinde cihaz adını manuel ara
-// AD yapısı: [length][type][data...] — isim tipleri 0x08 ve 0x09
+// Manually search for device name in BLE advertisement packet
+// AD structure: [length][type][data...] — name types 0x08 and 0x09
 bool adv_has_name(ble_gap_evt_adv_report_t* report, const char* name) {
     const uint8_t* data = report->data.p_data;
     uint16_t       dlen = report->data.len;
@@ -388,52 +573,52 @@ bool adv_has_name(ble_gap_evt_adv_report_t* report, const char* name) {
     return false;
 }
 
-// Scan callback: reklam paketi gelince isim kontrol edilir
+// Scan callback: check device name on each advertisement
 void scan_callback(ble_gap_evt_adv_report_t* report) {
     if (adv_has_name(report, CHEST_DEVICE_NAME)) {
-        Serial.println("[CHEST] BPSync-Chest bulundu — baglaniliyor...");
+        Serial.println("[CHEST] BPSync-Chest found — connecting...");
         Bluefruit.Central.connect(report);
     } else {
-        Bluefruit.Scanner.resume();   // başka cihaz, taramaya devam
+        Bluefruit.Scanner.resume();   // other device, continue scanning
     }
 }
 
-// Chest'e bağlanınca: servis + karakteristik keşfet, notify aç
+// On chest connect: discover service + characteristic, enable notify
 void central_connect_callback(uint16_t conn_handle) {
-    Serial.println("[CHEST] Bağlandi — servis kesfediliyor...");
+    Serial.println("[CHEST] Connected — discovering services...");
 
     if (!chestSvc.discover(conn_handle)) {
-        Serial.println("[CHEST] Servis bulunamadi — baglanti kesiliyor");
+        Serial.println("[CHEST] Service not found — disconnecting");
         Bluefruit.disconnect(conn_handle);
         return;
     }
 
     if (!chestDataChar.discover()) {
-        Serial.println("[CHEST] Karakteristik bulunamadi — baglanti kesiliyor");
+        Serial.println("[CHEST] Characteristic not found — disconnecting");
         Bluefruit.disconnect(conn_handle);
         return;
     }
 
     if (!chestDataChar.enableNotify()) {
-        Serial.println("[CHEST] Notify açilamadi — baglanti kesiliyor");
+        Serial.println("[CHEST] Failed to enable notify — disconnecting");
         Bluefruit.disconnect(conn_handle);
         return;
     }
 
     chestConnected = true;
-    Serial.println("[CHEST] Hazir — ECG + Chest IMU aliniyor");
+    Serial.println("[CHEST] Ready — receiving ECG + Chest IMU");
 }
 
-// Chest bağlantısı kopunca: verileri sıfırla, scanner otomatik başlar
+// On chest disconnect: reset data, scanner restarts automatically
 void central_disconnect_callback(uint16_t conn_handle, uint8_t reason) {
     (void)conn_handle;
     (void)reason;
     chestConnected = false;
     ep = 0;  cx = 0;  cy = 0;  cz = 0;  qi_c = 0;
-    Serial.println("[CHEST] Baglanti kesildi — yeniden tarama...");
+    Serial.println("[CHEST] Disconnected — rescanning...");
 }
 
-// Chest'ten veri gelince: ChestPacket'i parse et
+// On chest data received: parse ChestPacket
 void chest_data_callback(BLEClientCharacteristic* chr,
                          uint8_t* data, uint16_t len) {
     (void)chr;
@@ -449,7 +634,7 @@ void chest_data_callback(BLEClientCharacteristic* chr,
 
 
 // ══════════════════════════════════════════════════════════════
-//  SENSÖR OKUMA FONKSİYONLARI
+//  SENSOR READ FUNCTIONS
 // ══════════════════════════════════════════════════════════════
 void readPPG() {
     if (ppgSensor.available()) {
@@ -470,12 +655,12 @@ void readTemperature() {
 
 
 // ══════════════════════════════════════════════════════════════
-//  calculateSQI — Sinyal Kalite İndeksi
+//  calculateSQI — Signal Quality Index
 //
-//  qi_w  : Wrist  — PPG sinyali var mı + bilek sabit mi
-//  qi_c  : Chest  — Chest modülünden gelir (ChestPacket.qi_c)
-//  qi    : Kombine = qi_w AND qi_c
-//          Chest bağlı değilse: qi = qi_w  (wrist-only mod)
+//  qi_w  : Wrist  — PPG signal present + wrist steady
+//  qi_c  : Chest  — received from Chest module (ChestPacket.qi_c)
+//  qi    : Combined = qi_w AND qi_c
+//          If Chest not connected: qi = qi_w  (wrist-only mode)
 // ══════════════════════════════════════════════════════════════
 void calculateSQI() {
     float mag       = sqrt((float)w_ax * w_ax +
@@ -487,14 +672,19 @@ void calculateSQI() {
     bool ppgOK    = (ppg_ir   > SQI_PPG_MIN);
 
     qi_w = (motionOK && ppgOK) ? 1 : 0;
-    // qi_c: chest callback'ten geliyor, burada hesaplanmıyor
+    // qi_c: comes from chest callback, not computed here
+
+    // Update LED based on signal quality when streaming
+    if (streaming && Bluefruit.connected()) {
+        setLedMode(qi_w ? LED_SOLID : LED_BLINK_SQI);
+    }
 }
 
 
 // ══════════════════════════════════════════════════════════════
 //  buildJSON
-//  qi_w / qi_c / qi üç ayrı alanda → backend ve ML için
-//  Chest bağlı değilken: ep=0 cx=cy=cz=0 qi_c=0 qi=qi_w
+//  qi_w / qi_c / qi in three separate fields → for backend and ML
+//  When Chest not connected: ep=0 cx=cy=cz=0 qi_c=0 qi=qi_w
 // ══════════════════════════════════════════════════════════════
 void buildJSON(char* buf, int bufSize) {
     uint8_t qi_combined = chestConnected ? (qi_w & qi_c) : qi_w;
@@ -530,7 +720,7 @@ void buildJSON(char* buf, int bufSize) {
 
 
 // ══════════════════════════════════════════════════════════════
-//  sendToPhone — JSON'u BLE Notify ile gönder
+//  sendToPhone — send JSON via BLE Notify
 // ══════════════════════════════════════════════════════════════
 void sendToPhone() {
     char json[256];
@@ -539,7 +729,7 @@ void sendToPhone() {
     dataChar.notify((uint8_t*)json, strlen(json));
     seqNum++;
 
-    // Her 50 frame'de bir (~5 sn) Serial'a yaz
+    // Print to Serial every 50 frames (~5 s)
     if (seqNum % 50 == 0) {
         Serial.print("[TX #");
         Serial.print(seqNum);
