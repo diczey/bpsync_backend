@@ -8,22 +8,33 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from backend.app.config import settings
-from backend.app.database import create_tables
+from backend.config import settings
+from backend.database import create_tables, SensorSessionLocal
 
 # Import routers
-from backend.app.routers import auth, dashboard, readings, trends, reports, notifications, profile, sensor
+from backend.routers import auth, dashboard, readings, trends, reports, notifications, profile
+from backend.routers import ble as ble_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
-    # Startup: Create database tables
+    # Startup: create PostgreSQL tables
     create_tables()
+
+    # Startup: launch BLE manager + data pipeline
+    from ble.manager import init_ble_manager
+    from ble.data_manager import DataManager
+    dm = DataManager(db_factory=SensorSessionLocal)
+    ble = init_ble_manager(dm)
+    await ble.start()
     print(f"[OK] {settings.app_name} Backend started!")
-    print(f"[INFO] Mock data mode: {'ENABLED' if settings.use_mock_data else 'DISABLED'}")
+
     yield
-    # Shutdown
+
+    # Shutdown: stop BLE
+    from ble.manager import get_ble_manager
+    await get_ble_manager().stop()
     print(f"[BYE] {settings.app_name} Backend shutting down...")
 
 
@@ -52,7 +63,7 @@ Gercek sensor verileri olmadan mock verilerle calisabilirsiniz.
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins + ["*"],  # Allow all in development
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -66,7 +77,7 @@ app.include_router(trends.router, prefix="/trends", tags=["Trends"])
 app.include_router(reports.router, prefix="/reports", tags=["Reports"])
 app.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 app.include_router(profile.router, prefix="/profile", tags=["Profile"])
-app.include_router(sensor.router)
+app.include_router(ble_router.router, prefix="/ble", tags=["BLE"])
 
 
 @app.get("/", tags=["Root"])

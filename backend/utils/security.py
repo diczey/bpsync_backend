@@ -9,9 +9,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 import hashlib
 
-from backend.app.config import settings
-from backend.app.database import get_db
-from backend.app.models.user import User
+from backend.config import settings
+from backend.database import get_db
+from backend.models.user import User
 
 # Use simple SHA256 hashing for development (use bcrypt in production with proper setup)
 # This avoids bcrypt compatibility issues on Windows

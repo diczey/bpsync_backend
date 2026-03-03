@@ -25,7 +25,7 @@ import joblib
 
 
 # Model dosyalarının kaydedileceği klasör
-MODEL_DIR = Path(__file__).parent.parent.parent / "models"
+MODEL_DIR = Path(__file__).parent.parent / "ml_models"
 MODEL_DIR.mkdir(exist_ok=True)
 
 SYSTOLIC_MODEL_PATH = MODEL_DIR / "xgb_systolic.joblib"

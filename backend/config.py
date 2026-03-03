@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     # TimescaleDB (Sensor DB)
     sensor_database_url: str = "postgresql://bpsync_sensor_app:bpsync_sensor_password@timescaledb:5432/bpsync_sensor"
 
-    # JWT Authentication
-    secret_key: str = "your-super-secret-key-change-this-in-production"
+    # JWT Authentication — must be set in .env as SECRET_KEY=<random-32+-char-string>
+    secret_key: str
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440  # 24 hours
     

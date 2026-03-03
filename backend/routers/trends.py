@@ -1,118 +1,84 @@
-"""
-Trends Router - Trend Analysis Data
+﻿"""
+Trends Router - BP Trend Analysis from TimescaleDB
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from typing import Optional
+from sqlalchemy import text
+from typing import List, Optional
+from pydantic import BaseModel
 
-from backend.app.database import get_db
-from backend.app.models.user import User
-from backend.app.schemas.trends import TrendResponse, TrendDataDto, TrendDataPoint
-from backend.app.utils.security import get_current_user
-from backend.app.utils.mock_data import generate_trend_data
-from backend.app.config import settings
+from backend.database import get_sensor_db
+from backend.models.user import User
+from backend.utils.security import get_current_user
 
 router = APIRouter()
 
 
-@router.get("", response_model=TrendResponse)
-async def get_trend_data(
-    type: str = "heart_rate",
-    period: str = "week",
+class TrendPoint(BaseModel):
+    bucket: str
+    avg_systolic: Optional[float] = None
+    avg_diastolic: Optional[float] = None
+    avg_heart_rate: Optional[float] = None
+    count: int
+
+
+class TrendResponse(BaseModel):
+    success: bool
+    period: str
+    points: List[TrendPoint] = []
+    message: Optional[str] = None
+
+
+PERIOD_INTERVAL = {
+    'day':   ('1 hour',  '1 day'),
+    'week':  ('1 day',   '7 days'),
+    'month': ('1 day',  '30 days'),
+}
+
+
+@router.get('', response_model=TrendResponse)
+async def get_trends(
+    period: str = 'week',
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sensor_db),
 ):
-    """
-    Trend verilerini getir
-    
-    - type: heart_rate, systolic, diastolic, spo2, temperature
-    - period: day, week, month
-    """
-    # Map period to days
-    period_days = {
-        "day": 1,
-        "week": 7,
-        "month": 30
-    }
-    days = period_days.get(period, 7)
-    
-    if settings.use_mock_data:
-        mock_trend = generate_trend_data(type, days=days)
-        return TrendResponse(
-            success=True,
-            trends=[TrendDataDto(
-                type=mock_trend["type"],
-                data_points=[TrendDataPoint(**dp) for dp in mock_trend["data_points"]],
-                average=mock_trend["average"],
-                min=mock_trend["min"],
-                max=mock_trend["max"]
-            )]
-        )
-    
-    # TODO: Implement actual trend calculation from database
+    '''
+    Aggregated BP trends per time bucket.
+    period: day (hourly buckets), week (daily), month (daily last 30 days)
+    '''
+    bucket_interval, back_interval = PERIOD_INTERVAL.get(period, ('1 day', '7 days'))
+
+    rows = db.execute(
+        text('''
+            SELECT
+                time_bucket(:bucket, time) AS bucket,
+                ROUND(AVG(systolic)::numeric, 1)    AS avg_systolic,
+                ROUND(AVG(diastolic)::numeric, 1)   AS avg_diastolic,
+                ROUND(AVG(heart_rate)::numeric, 1)  AS avg_heart_rate,
+                COUNT(*)                            AS count
+            FROM bp_readings
+            WHERE user_id = :uid
+              AND time >= NOW() - INTERVAL :back
+            GROUP BY bucket
+            ORDER BY bucket ASC
+        '''),
+        {'uid': current_user.id, 'bucket': bucket_interval, 'back': back_interval},
+    ).fetchall()
+
+    if not rows:
+        return TrendResponse(success=True, period=period, message='No data for this period.')
+
     return TrendResponse(
         success=True,
-        trends=[],
-        message="Trend verisi bulunamadı"
+        period=period,
+        points=[
+            TrendPoint(
+                bucket=str(r.bucket),
+                avg_systolic=r.avg_systolic,
+                avg_diastolic=r.avg_diastolic,
+                avg_heart_rate=r.avg_heart_rate,
+                count=r.count,
+            )
+            for r in rows
+        ],
     )
-
-
-@router.get("/ecg", response_model=TrendResponse)
-async def get_ecg_trends(
-    start_date: Optional[int] = None,
-    end_date: Optional[int] = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    ECG trend verilerini getir
-    """
-    if settings.use_mock_data:
-        mock_trend = generate_trend_data("ecg", days=7)
-        return TrendResponse(
-            success=True,
-            trends=[TrendDataDto(
-                type="ecg",
-                data_points=[TrendDataPoint(**dp) for dp in mock_trend["data_points"]],
-                average=mock_trend["average"],
-                min=mock_trend["min"],
-                max=mock_trend["max"]
-            )]
-        )
-    
-    return TrendResponse(
-        success=True,
-        trends=[],
-        message="ECG trend verisi bulunamadı"
-    )
-
-
-@router.get("/ppg", response_model=TrendResponse)
-async def get_ppg_trends(
-    start_date: Optional[int] = None,
-    end_date: Optional[int] = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    PPG trend verilerini getir
-    """
-    if settings.use_mock_data:
-        mock_trend = generate_trend_data("ppg", days=7)
-        return TrendResponse(
-            success=True,
-            trends=[TrendDataDto(
-                type="ppg",
-                data_points=[TrendDataPoint(**dp) for dp in mock_trend["data_points"]],
-                average=mock_trend["average"],
-                min=mock_trend["min"],
-                max=mock_trend["max"]
-            )]
-        )
-    
-    return TrendResponse(
-        success=True,
-        trends=[],
-        message="PPG trend verisi bulunamadı"
-    )
-

@@ -22,7 +22,7 @@ services:
       - "5434:5432"
     volumes:
       - tsdata:/var/lib/postgresql/data
-      - ./timescale_schema.sql:/docker-entrypoint-initdb.d/01_timescale_schema.sql
+      - ./timescale/schema.sql:/docker-entrypoint-initdb.d/01_timescale_schema.sql
 
   backend:
     build:
@@ -37,7 +37,7 @@ services:
       sensor_database_url: "postgresql://bpsync_sensor_app:bpsync_sensor_password@timescaledb:5432/bpsync_sensor"
     ports:
       - "8000:8000"
-    command: ["bash","-lc","uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"]
+    command: ["bash","-lc","uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
     volumes:
       - ..:/app
     working_dir: /app

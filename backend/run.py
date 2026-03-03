@@ -8,7 +8,7 @@ Bu script backend sunucusunu baslatir.
 API dokumantasyonu: http://localhost:8000/docs
 """
 import uvicorn
-from backend.app.config import settings
+from backend.config import settings
 
 
 if __name__ == "__main__":
@@ -24,7 +24,7 @@ if __name__ == "__main__":
     print("")
     
     uvicorn.run(
-        "app.main:app",
+        "backend.main:app",
         host=settings.host,
         port=settings.port,
         reload=settings.debug

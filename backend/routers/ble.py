@@ -1,26 +1,19 @@
 """
 BLE Router — BLE Connection Control Endpoints
 
-This router provides REST API endpoints for querying the BLE Manager status
-and starting/stopping streaming.
+Endpoints for the mobile app to scan, connect, start/stop streaming,
+and monitor the BLE connection to the wrist module.
 
-Prefix: /ble
-Tags: ["BLE"]
-
-INTEGRATION NOTE:
-  For this router to work, add the following to main.py:
-    from routes import ble
-    app.include_router(ble.router, prefix="/ble", tags=["BLE"])
-
-  The lifespan function must also initialize and stop the BLEManager.
-  (Details: docs/ble_data_manager.md)
+Prefix: /ble  (registered in backend/main.py)
 """
 
 from fastapi import APIRouter, HTTPException, Depends
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel
 
-from services.ble_manager import get_ble_manager, BLEManager
+from ble.manager import get_ble_manager, BLEManager, WRIST_DEVICE_NAME, SCAN_TIMEOUT_S
+from backend.utils.security import get_current_user
+from backend.models.user import User
 
 router = APIRouter()
 
@@ -64,46 +57,80 @@ class BLEStatusResponse(BaseModel):
     data_stats: dict
 
 
+class ScanResult(BaseModel):
+    found: bool
+    device_name: Optional[str] = None
+    device_address: Optional[str] = None
+    message: str
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 #  ENDPOINTS
 # ──────────────────────────────────────────────────────────────────────────────
 
 @router.get("/status", response_model=BLEStatusResponse, summary="BLE connection status")
-async def get_ble_status(ble: BLEManager = Depends(require_ble)):
-    """
-    Returns the current status of the BLE connection to the wrist module.
-
-    Response fields:
-    - **available**: Is the `bleak` library installed?
-    - **connected**: Is the device currently connected?
-    - **device_name**: Name of the target / connected device
-    - **device_address**: Connected BLE MAC address (null if not connected)
-    - **connected_at**: Connection establishment time (ISO 8601)
-    - **data_stats**: DataManager statistics (processed/failed frame counts)
-    """
+async def get_ble_status(
+    ble: BLEManager = Depends(require_ble),
+    current_user: User = Depends(get_current_user),
+):
+    """Current BLE connection status. Used by mobile 'Find Sensor' screen."""
     return ble.get_status()
 
 
-@router.post(
-    "/start",
-    response_model=CommandResponse,
-    summary="Start BLE streaming"
-)
-async def start_streaming(ble: BLEManager = Depends(require_ble)):
+@router.post("/scan", response_model=ScanResult, summary="Scan for wrist device")
+async def scan_for_device(
+    ble: BLEManager = Depends(require_ble),
+    current_user: User = Depends(get_current_user),
+):
     """
-    Sends a `START` command to the wrist module.
+    Triggers a BLE scan for the wrist module (BPSync-Wrist).
+    Called by the mobile 'Find Sensor' / 'Scan' button.
+    Scan duration: up to SCAN_TIMEOUT_S seconds.
+    """
+    try:
+        from bleak import BleakScanner
+        devices = await BleakScanner.discover(timeout=SCAN_TIMEOUT_S)
+        for d in devices:
+            if d.name and WRIST_DEVICE_NAME.lower() in d.name.lower():
+                return ScanResult(
+                    found=True,
+                    device_name=d.name,
+                    device_address=d.address,
+                    message=f"Device found: {d.name} ({d.address})",
+                )
+        return ScanResult(found=False, message="BPSync-Wrist not found. Make sure the device is on and nearby.")
+    except ImportError:
+        raise HTTPException(status_code=503, detail="bleak library not installed on server.")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Scan error: {exc}")
 
-    After receiving this command, the device begins sending JSON frames
-    via BLE Notify at 10 Hz.
 
-    Returns 409 Conflict if the device is not connected.
+@router.post("/start", response_model=CommandResponse, summary="Start BLE streaming")
+async def start_streaming(
+    ble: BLEManager = Depends(require_ble),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Sends START command to the wrist module. Device begins 10 Hz JSON streaming.
+    Also wires the current user's ID and age into DataManager so readings are
+    correctly attributed in TimescaleDB.
     """
     status = ble.get_status()
     if not status["connected"]:
-        raise HTTPException(
-            status_code=409,
-            detail="Device is not connected. Wait for the BLE connection to be established."
-        )
+        raise HTTPException(status_code=409, detail="Device is not connected.")
+
+    # Assign current user to DataManager so bp_readings are written with correct user_id
+    ble._dm.set_user_id(current_user.id)
+
+    # Set user age for ML inference (from date_of_birth if available, else default 40)
+    if current_user.date_of_birth:
+        try:
+            from datetime import date
+            dob = date.fromisoformat(current_user.date_of_birth)
+            age = (date.today() - dob).days / 365.25
+            ble._dm.set_user_age(age)
+        except (ValueError, TypeError):
+            pass  # keep default 40 if date_of_birth format is invalid
 
     ok = await ble.send_command("START")
     if ok:
@@ -111,23 +138,15 @@ async def start_streaming(ble: BLEManager = Depends(require_ble)):
     return CommandResponse(success=False, message="Command could not be sent.")
 
 
-@router.post(
-    "/stop",
-    response_model=CommandResponse,
-    summary="Stop BLE streaming"
-)
-async def stop_streaming(ble: BLEManager = Depends(require_ble)):
-    """
-    Sends a `STOP` command to the wrist module.
-
-    The device stops streaming; the BLE connection remains open.
-    """
+@router.post("/stop", response_model=CommandResponse, summary="Stop BLE streaming")
+async def stop_streaming(
+    ble: BLEManager = Depends(require_ble),
+    current_user: User = Depends(get_current_user),
+):
+    """Sends STOP command. Device stops streaming; BLE connection stays open."""
     status = ble.get_status()
     if not status["connected"]:
-        raise HTTPException(
-            status_code=409,
-            detail="Device is not connected."
-        )
+        raise HTTPException(status_code=409, detail="Device is not connected.")
 
     ok = await ble.send_command("STOP")
     if ok:
@@ -135,19 +154,11 @@ async def stop_streaming(ble: BLEManager = Depends(require_ble)):
     return CommandResponse(success=False, message="Command could not be sent.")
 
 
-@router.get(
-    "/stats",
-    summary="DataManager statistics"
-)
-async def get_data_stats(ble: BLEManager = Depends(require_ble)):
-    """
-    Returns frame processing statistics from DataManager.
-
-    Response fields:
-    - **processed**: Frames successfully written to the DB
-    - **failed**: Frames with errors or that failed to parse
-    - **total**: Total frames received
-    - **success_rate**: Success rate (%)
-    """
+@router.get("/stats", summary="DataManager frame statistics")
+async def get_data_stats(
+    ble: BLEManager = Depends(require_ble),
+    current_user: User = Depends(get_current_user),
+):
+    """Frame processing stats: processed, failed, success_rate, bp_inferences, buffer_fill."""
     status = ble.get_status()
     return status.get("data_stats", {})

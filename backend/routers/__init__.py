@@ -1,2 +1,2 @@
-from backend.app.routers import auth, dashboard, readings, trends, reports, notifications, profile, sensor
+# Router imports are handled individually in backend/main.py
 
