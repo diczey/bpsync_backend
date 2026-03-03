@@ -67,3 +67,13 @@ Database: bpsync
 Username: bpsync_app
 
 Password: bpsync_password
+
+## Connection Details
+
+Eğer database bağlantısında sıkıntı yaşıyorsanız docker yenilemesi yapın, sırasıyla komutlar:
+
+docker compose down -v
+->Container'ları ve volume'ları durdur + sil
+
+docker compose up -d
+->Yeniden başlat
