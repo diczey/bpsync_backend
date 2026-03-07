@@ -1,0 +1,5 @@
+-- Tables are managed automatically by SQLAlchemy ORM (backend/models/).
+-- Starting the backend server once will auto-create all tables:
+--   users, notifications
+--
+-- Do NOT create tables manually here.

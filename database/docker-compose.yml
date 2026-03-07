@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: bpsync
+      POSTGRES_USER: bpsync_app
+      POSTGRES_PASSWORD: bpsync_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    restart: always
+    environment:
+      POSTGRES_DB: bpsync_sensor
+      POSTGRES_USER: bpsync_sensor_app
+      POSTGRES_PASSWORD: bpsync_sensor_password
+    ports:
+      - "5434:5432"
+    volumes:
+      - tsdata:/var/lib/postgresql/data
+      - ./timescale/schema.sql:/docker-entrypoint-initdb.d/01_timescale_schema.sql
+
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    restart: always
+    depends_on:
+      - postgres
+      - timescaledb
+    environment:
+      DATABASE_URL: "postgresql://bpsync_app:bpsync_password@postgres:5432/bpsync"
+      SENSOR_DATABASE_URL: "postgresql://bpsync_sensor_app:bpsync_sensor_password@timescaledb:5432/bpsync_sensor"
+      SECRET_KEY: "dev-secret-change-me"
+      USE_MOCK_DATA: "false"
+      DEBUG: "true"
+      HOST: "0.0.0.0"
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    command: ["bash","-lc","uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
+    volumes:
+      - ..:/app
+    working_dir: /app
+
+volumes:
+  pgdata:
+  tsdata:
