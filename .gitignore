@@ -1,0 +1,44 @@
+# ── PlatformIO ────────────────────────────────────────────────
+.pio/
+.pioenvs/
+.clang_complete
+.gcc-flags.json
+
+# ── VS Code (kişisel ayarlar, paylaşılmaz) ───────────────────
+.vscode/settings.json
+.vscode/launch.json
+.vscode/ipch/
+
+# ── Python / Backend ──────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.env
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# ── ML / Model dosyaları ──────────────────────────────────────
+*.joblib
+*.pkl
+*.h5
+*.onnx
+model-training/trained_models/*.joblib
+model-training/trained_models/*.pkl
+
+# ── Database ──────────────────────────────────────────────────
+*.sql.bak
+postgres_data/
+timescale_data/
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ───────────────────────────────────────────────────────
+*.iml
+.idea/
