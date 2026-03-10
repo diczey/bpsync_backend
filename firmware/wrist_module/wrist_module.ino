@@ -90,7 +90,7 @@
 //  SQI THRESHOLDS
 // ──────────────────────────────────────────────────────────────
 #define SQI_MOTION_THRESHOLD  4096   // ~0.25 g deviation (16384 = 1g)
-#define SQI_PPG_MIN           1000   // IR < this → no wrist/finger contact
+#define SQI_PPG_MIN           3000   // IR < this → no wrist contact
 
 // ──────────────────────────────────────────────────────────────
 //  CHEST DATA PACKET
@@ -637,7 +637,8 @@ void chest_data_callback(BLEClientCharacteristic* chr,
 //  SENSOR READ FUNCTIONS
 // ══════════════════════════════════════════════════════════════
 void readPPG() {
-    if (ppgSensor.available()) {
+    ppgSensor.check();  // hardware FIFO → software buffer
+    while (ppgSensor.available()) {
         ppg_ir  = ppgSensor.getIR();
         ppg_red = ppgSensor.getRed();
         ppgSensor.nextSample();

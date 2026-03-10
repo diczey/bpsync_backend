@@ -48,8 +48,8 @@
 // ──────────────────────────────────────────────────────────────
 //  EŞIKLER
 // ──────────────────────────────────────────────────────────────
-#define PPG_MIN_SIGNAL   1000    // IR < bu değer → sensör cilde değmiyor
-#define PPG_GOOD_SIGNAL  50000   // IR > bu değer → iyi sinyal
+#define PPG_MIN_SIGNAL   3000    // IR < bu değer → bilek sensörde değil
+#define PPG_GOOD_SIGNAL  15000   // IR > bu değer → bilek için iyi sinyal
 #define SQI_MOTION_THR   0.25f   // g cinsinden hareket eşiği
 
 // ──────────────────────────────────────────────────────────────
@@ -155,11 +155,14 @@ void loop() {
 
     unsigned long now = millis();
 
-    // PPG: sürekli FIFO boşalt
-    if (ppgOK && ppg.available()) {
-        ir  = ppg.getIR();
-        red = ppg.getRed();
-        ppg.nextSample();
+    // PPG: önce donanım FIFO'sunu oku, sonra software buffer'dan al
+    if (ppgOK) {
+        ppg.check();  // hardware FIFO → software buffer
+        while (ppg.available()) {
+            ir  = ppg.getIR();
+            red = ppg.getRed();
+            ppg.nextSample();
+        }
     }
 
     // IMU: sürekli oku
