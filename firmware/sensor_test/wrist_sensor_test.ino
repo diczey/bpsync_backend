@@ -40,6 +40,17 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
+// Adafruit nRF52 board paketi XIAO'nun Dx pin isimlerini tanımlamıyor
+// XIAO nRF52840: D2=P0.28, D3=P0.29, D4=P0.04(SDA), D5=P0.05(SCL)
+#ifndef D2
+  #define D0   2
+  #define D1   3
+  #define D2  28
+  #define D3  29
+  #define D4   4
+  #define D5   5
+#endif
+
 #include <Wire.h>
 #include <MAX30105.h>
 #include <MPU6050.h>

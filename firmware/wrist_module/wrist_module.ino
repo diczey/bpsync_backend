@@ -3,9 +3,8 @@
  * ║           BPSync — Wrist Module Firmware                    ║
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  Board   : Seeed XIAO nRF52840                              ║
- * ║  PIO     : platform=nordicnrf52, board=adafruit_feather_    ║
- * ║            nrf52840  (same chip, Adafruit core workaround)  ║
- * ║  BLE API : Adafruit Bluefruit (built-in, no extra lib)      ║
+ * ║  Board pkg: Seeed nRF52 Boards (Arduino IDE)                ║
+ * ║  BLE API : ArduinoBLE (Peripheral + Central, time-sliced)   ║
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  SENSORS (all I2C — SDA=D4, SCL=D5)                        ║
  * ║    MAX30102  @ 0x57  →  PPG (IR + Red)                     ║
@@ -22,6 +21,7 @@
  * ║               Long press (3 s) : BLE reset + re-advertise  ║
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  BLE PERIPHERAL  →  Phone connects                          ║
+ * ║    Device name  : "BPSync-Wrist"                            ║
  * ║    Service  : 19B10000-E8F2-537E-4F6C-D104768A1214         ║
  * ║    DataChar : 19B10001-…  (Notify, 256 B) — sends JSON     ║
  * ║    CmdChar  : 19B10002-…  (Write,   20 B) — START/STOP     ║
@@ -30,17 +30,19 @@
  * ║    Device name: "BPSync-Chest"                              ║
  * ║    Service  : 29B10000-E8F2-537E-4F6C-D104768A1214         ║
  * ║    DataChar : 29B10001-…  (Notify) — receives ChestPacket  ║
+ * ║    NOTE: ArduinoBLE switches between Peripheral and Central  ║
+ * ║          roles in time-slices (scan when phone not active)  ║
  * ╠══════════════════════════════════════════════════════════════╣
- * ║  JSON FRAME (~175 bytes)                                    ║
+ * ║  JSON FRAME (~175 bytes, sent every 100 ms)                 ║
  * ║  {"ts":ms,"sq":n,                                           ║
  * ║   "pi":IR,"pr":Red,                                         ║
  * ║   "ax":,"ay":,"az":,"gx":,"gy":,"gz":,                     ║
  * ║   "tp":°C,                                                  ║
- * ║   "ep":0|1,                     ← ECG R-peak (chest)       ║
- * ║   "cx":,"cy":,"cz":,            ← Chest IMU (chest)        ║
- * ║   "qi_w":0|1,                   ← Wrist SQI               ║
- * ║   "qi_c":0|1,                   ← Chest SQI (chest)       ║
- * ║   "qi":0|1,                     ← Combined (qi_w AND qi_c) ║
+ * ║   "ep":0|1,        ← ECG R-peak (chest)                    ║
+ * ║   "cx":,"cy":,"cz":, ← Chest IMU (chest)                  ║
+ * ║   "qi_w":0|1,      ← Wrist SQI                             ║
+ * ║   "qi_c":0|1,      ← Chest SQI (chest)                    ║
+ * ║   "qi":0|1,        ← Combined (qi_w AND qi_c)              ║
  * ║   "bt":100}                                                 ║
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  NOTE: When Chest is not connected ep/cx/cy/cz/qi_c = 0,   ║
@@ -52,7 +54,7 @@
 //  INCLUDES
 // ──────────────────────────────────────────────────────────────
 #include <Wire.h>
-#include <bluefruit.h>
+#include <ArduinoBLE.h>
 #include <MAX30105.h>
 #include <MPU6050.h>
 #include <Adafruit_MCP9808.h>
@@ -87,14 +89,19 @@
 #define BLE_TX_INTERVAL_MS 100     //  10 Hz
 
 // ──────────────────────────────────────────────────────────────
+//  BLE CENTRAL SCAN — Chest scan happens between TX windows
+// ──────────────────────────────────────────────────────────────
+#define CHEST_SCAN_INTERVAL_MS  5000   // Try connecting chest every 5 s
+#define CHEST_SCAN_DURATION_MS  500    // Each scan window is 500 ms
+
+// ──────────────────────────────────────────────────────────────
 //  SQI THRESHOLDS
 // ──────────────────────────────────────────────────────────────
 #define SQI_MOTION_THRESHOLD  4096   // ~0.25 g deviation (16384 = 1g)
-#define SQI_PPG_MIN           10000  // IR < this → no wrist contact (wrist baseline ~97k-100k)
+#define SQI_PPG_MIN           10000  // IR < this → no wrist contact
 
 // ──────────────────────────────────────────────────────────────
-//  CHEST DATA PACKET
-//  Must match chest firmware struct (8 byte, packed)
+//  CHEST DATA PACKET — must match chest firmware (8 bytes packed)
 // ──────────────────────────────────────────────────────────────
 struct __attribute__((packed)) ChestPacket {
     uint8_t  ep;            // ECG R-peak detected (0/1)
@@ -103,16 +110,11 @@ struct __attribute__((packed)) ChestPacket {
 };  // Total: 8 bytes
 
 // ──────────────────────────────────────────────────────────────
-//  BLE OBJECTS
+//  BLE OBJECTS — Peripheral (phone)
 // ──────────────────────────────────────────────────────────────
-// Peripheral (phone)
 BLEService        wristSvc(WRIST_SERVICE_UUID);
-BLECharacteristic dataChar(DATA_CHAR_UUID);
-BLECharacteristic cmdChar(CMD_CHAR_UUID);
-
-// Central (chest module)
-BLEClientService        chestSvc(CHEST_SERVICE_UUID);
-BLEClientCharacteristic chestDataChar(CHEST_DATA_UUID);
+BLECharacteristic dataChar(DATA_CHAR_UUID, BLENotify, 244);
+BLECharacteristic cmdChar(CMD_CHAR_UUID,  BLEWrite | BLEWriteWithoutResponse, 20);
 
 // ──────────────────────────────────────────────────────────────
 //  SENSOR OBJECTS
@@ -129,21 +131,21 @@ uint32_t ppg_red = 0;
 int16_t  w_ax = 0, w_ay = 0, w_az = 0;
 int16_t  w_gx = 0, w_gy = 0, w_gz = 0;
 float    temperature = 0.0f;
-uint8_t  qi_w = 0;          // Wrist SQI
+uint8_t  qi_w = 0;
 
 // ──────────────────────────────────────────────────────────────
-//  CHEST DATA  (filled when chest connects, else 0)
+//  CHEST DATA  (zeroed until chest connects)
 // ──────────────────────────────────────────────────────────────
-uint8_t  ep   = 0;          // ECG R-peak
-int16_t  cx   = 0, cy = 0, cz = 0;  // Chest acceleration
-uint8_t  qi_c = 0;          // Chest SQI
+uint8_t  ep   = 0;
+int16_t  cx   = 0, cy = 0, cz = 0;
+uint8_t  qi_c = 0;
+bool     chestConnected = false;
 
 // ──────────────────────────────────────────────────────────────
 //  SESSION STATE
 // ──────────────────────────────────────────────────────────────
-uint16_t seqNum         = 0;
-bool     streaming      = false;
-bool     chestConnected = false;
+uint16_t seqNum    = 0;
+bool     streaming = false;
 
 // ──────────────────────────────────────────────────────────────
 //  LED STATE MACHINE
@@ -158,7 +160,7 @@ enum LedMode {
 LedMode       ledMode       = LED_BLINK_SLOW;
 unsigned long tLed          = 0;
 bool          ledState      = false;
-uint8_t       sqiBlinkPhase = 0;   // phase counter for double blink
+uint8_t       sqiBlinkPhase = 0;
 
 // ──────────────────────────────────────────────────────────────
 //  BUTTON DEBOUNCE & LONG PRESS
@@ -166,19 +168,20 @@ uint8_t       sqiBlinkPhase = 0;   // phase counter for double blink
 #define BTN_DEBOUNCE_MS   50
 #define BTN_LONG_PRESS_MS 3000
 
-bool          btnLastRaw  = HIGH;  // pullup → normally HIGH
+bool          btnLastRaw  = HIGH;
 bool          btnStable   = HIGH;
-unsigned long tBtnChange  = 0;    // last raw change timestamp
-unsigned long tBtnPressed = 0;    // stable LOW transition timestamp
-bool          btnHandled  = false; // ensures long press fires only once
+unsigned long tBtnChange  = 0;
+unsigned long tBtnPressed = 0;
+bool          btnHandled  = false;
 
 // ──────────────────────────────────────────────────────────────
 //  TIMERS
 // ──────────────────────────────────────────────────────────────
-unsigned long tPPG  = 0;
-unsigned long tIMU  = 0;
-unsigned long tTemp = 0;
-unsigned long tBLE  = 0;
+unsigned long tPPG       = 0;
+unsigned long tIMU       = 0;
+unsigned long tTemp      = 0;
+unsigned long tBLE       = 0;
+unsigned long tChestScan = 0;
 
 // ──────────────────────────────────────────────────────────────
 //  FUNCTION PROTOTYPES
@@ -195,20 +198,14 @@ void sendToPhone();
 void updateLED();
 void handleButton();
 void setLedMode(LedMode mode);
+void scanForChest();
+void connectToChest(BLEDevice& device);
+void readChestData(BLEDevice& chest);
 
-// Peripheral callbacks (phone)
-void periph_connect_callback(uint16_t conn_handle);
-void periph_disconnect_callback(uint16_t conn_handle, uint8_t reason);
-void onCmdWrite(uint16_t conn_handle, BLECharacteristic* chr,
-                uint8_t* data, uint16_t len);
-
-// Central callbacks (chest)
-bool adv_has_name(ble_gap_evt_adv_report_t* report, const char* name);
-void scan_callback(ble_gap_evt_adv_report_t* report);
-void central_connect_callback(uint16_t conn_handle);
-void central_disconnect_callback(uint16_t conn_handle, uint8_t reason);
-void chest_data_callback(BLEClientCharacteristic* chr,
-                         uint8_t* data, uint16_t len);
+// BLE event callbacks
+void onBLEConnect(BLEDevice central);
+void onBLEDisconnect(BLEDevice central);
+void onCmdWrite(BLEDevice central, BLECharacteristic characteristic);
 
 
 // ══════════════════════════════════════════════════════════════
@@ -220,7 +217,7 @@ void setup() {
 
     Serial.println("==============================================");
     Serial.println("  BPSync Wrist Module");
-    Serial.println("  Seeed XIAO nRF52840");
+    Serial.println("  Seeed XIAO nRF52840  |  ArduinoBLE");
     Serial.println("==============================================");
 
     Wire.begin();       // SDA=D4, SCL=D5
@@ -230,7 +227,7 @@ void setup() {
     initBLE();
 
     Serial.println("[READY] Advertising as '" DEVICE_NAME "'...");
-    Serial.println("[READY] Scanning for  '" CHEST_DEVICE_NAME "'...");
+    Serial.println("[READY] Will scan for  '" CHEST_DEVICE_NAME "' periodically...");
     Serial.println("==============================================");
 }
 
@@ -239,6 +236,8 @@ void setup() {
 //  LOOP
 // ══════════════════════════════════════════════════════════════
 void loop() {
+    BLE.poll();   // ArduinoBLE requires polling every loop
+
     unsigned long now = millis();
 
     if (now - tPPG >= PPG_INTERVAL_MS) {
@@ -258,9 +257,16 @@ void loop() {
 
     calculateSQI();
 
-    if (streaming && Bluefruit.connected() && (now - tBLE >= BLE_TX_INTERVAL_MS)) {
+    if (streaming && BLE.connected() && (now - tBLE >= BLE_TX_INTERVAL_MS)) {
         sendToPhone();
         tBLE = now;
+    }
+
+    // Scan for chest module when phone is not actively streaming
+    // (avoids BLE contention during active data transmission)
+    if (!chestConnected && !streaming && (now - tChestScan >= CHEST_SCAN_INTERVAL_MS)) {
+        tChestScan = now;
+        scanForChest();
     }
 
     handleButton();
@@ -269,36 +275,34 @@ void loop() {
 
 
 // ══════════════════════════════════════════════════════════════
-//  initHardware — LED and Button pin setup
+//  initHardware
 // ══════════════════════════════════════════════════════════════
 void initHardware() {
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, LOW);
-
     pinMode(BTN_PIN, INPUT_PULLUP);
-
     Serial.println("[OK]    LED (D3) + Button (D2)");
 }
 
 
 // ══════════════════════════════════════════════════════════════
-//  setLedMode — change LED mode (called from outside)
+//  setLedMode
 // ══════════════════════════════════════════════════════════════
 void setLedMode(LedMode mode) {
     if (ledMode == mode) return;
     ledMode       = mode;
     sqiBlinkPhase = 0;
-    tLed          = 0;   // switch to new mode immediately
+    tLed          = 0;
 }
 
 
 // ══════════════════════════════════════════════════════════════
-//  updateLED — called every loop, non-blocking blink
+//  updateLED
 //
 //  LED_BLINK_SLOW : 500 ms ON / 500 ms OFF  (1 Hz) — advertising
 //  LED_BLINK_FAST : 125 ms ON / 125 ms OFF  (4 Hz) — connected, idle
-//  LED_SOLID      : always ON               — streaming + good signal
-//  LED_BLINK_SQI  : double blink + long OFF — streaming + poor signal
+//  LED_SOLID      : always ON               — streaming + good SQI
+//  LED_BLINK_SQI  : double blink + long OFF — streaming + poor SQI
 //                   ON 80ms / OFF 80ms / ON 80ms / OFF 760ms
 // ══════════════════════════════════════════════════════════════
 void updateLED() {
@@ -328,7 +332,6 @@ void updateLED() {
             break;
 
         case LED_BLINK_SQI: {
-            // Phase: 0=1st ON  1=1st OFF  2=2nd ON  3=long OFF
             static const uint16_t sqiTiming[4] = {80, 80, 80, 760};
             if (now - tLed >= sqiTiming[sqiBlinkPhase]) {
                 sqiBlinkPhase = (sqiBlinkPhase + 1) % 4;
@@ -343,57 +346,55 @@ void updateLED() {
 
 
 // ══════════════════════════════════════════════════════════════
-//  handleButton — called every loop
+//  handleButton
 //
-//  Short press (< 3 s) : Streaming toggle (START / STOP)
-//  Long press  (≥ 3 s) : Disconnect BLE, re-advertise
+//  Short press (< 3 s) : toggle streaming START / STOP
+//  Long press  (≥ 3 s) : disconnect BLE, re-advertise
 // ══════════════════════════════════════════════════════════════
 void handleButton() {
     unsigned long now = millis();
-    bool          raw = digitalRead(BTN_PIN);   // LOW = pressed (pullup)
+    bool          raw = digitalRead(BTN_PIN);  // LOW = pressed (pullup)
 
-    // Debounce: consider stable if raw unchanged for 50 ms
     if (raw != btnLastRaw) {
         btnLastRaw = raw;
         tBtnChange = now;
     }
 
-    if ((now - tBtnChange) < BTN_DEBOUNCE_MS) return;  // not yet stable
+    if ((now - tBtnChange) < BTN_DEBOUNCE_MS) return;
 
-    // New stable LOW → press started
     if (raw == LOW && btnStable == HIGH) {
         btnStable   = LOW;
         tBtnPressed = now;
         btnHandled  = false;
     }
 
-    // Check for long press while held down
     if (raw == LOW && !btnHandled) {
         if ((now - tBtnPressed) >= BTN_LONG_PRESS_MS) {
             btnHandled = true;
             Serial.println("[BTN] Long press — resetting BLE...");
-            Bluefruit.disconnect(Bluefruit.connHandle());
+            BLEDevice central = BLE.central();
+            if (central) central.disconnect();
             streaming = false;
+            BLE.advertise();
             setLedMode(LED_BLINK_SLOW);
         }
     }
 
-    // Release → trigger short press (skip if long press already handled)
     if (raw == HIGH && btnStable == LOW) {
         btnStable = HIGH;
         if (!btnHandled) {
             if (streaming) {
                 streaming = false;
-                setLedMode(Bluefruit.connected() ? LED_BLINK_FAST : LED_BLINK_SLOW);
+                setLedMode(BLE.connected() ? LED_BLINK_FAST : LED_BLINK_SLOW);
                 Serial.println("[BTN] Short press — Streaming STOPPED");
             } else {
-                if (Bluefruit.connected()) {
+                if (BLE.connected()) {
                     streaming = true;
                     seqNum    = 0;
                     setLedMode(LED_SOLID);
                     Serial.println("[BTN] Short press — Streaming STARTED");
                 } else {
-                    Serial.println("[BTN] Short press — phone not connected, streaming not started");
+                    Serial.println("[BTN] Short press — phone not connected");
                 }
             }
         }
@@ -408,8 +409,7 @@ void initSensors() {
 
     // ── MAX30102 (PPG) ───────────────────────────────────────
     if (!ppgSensor.begin(Wire, I2C_SPEED_FAST)) {
-        Serial.println("[ERROR] MAX30102 — not found!"
-                       "  Check: VCC=3.3V, SDA=D4, SCL=D5");
+        Serial.println("[ERROR] MAX30102 — not found! Check: VCC=5V, SDA=D4, SCL=D5");
     } else {
         ppgSensor.setup(0x1F, 4, 2, 100, 411, 4096);
         ppgSensor.setPulseAmplitudeRed(0x1F);
@@ -420,8 +420,7 @@ void initSensors() {
     // ── MPU6050 (Wrist IMU) ──────────────────────────────────
     imu.initialize();
     if (!imu.testConnection()) {
-        Serial.println("[ERROR] MPU6050 — not found!"
-                       "  Check: VCC=3.3V, SDA=D4, SCL=D5, AD0=GND");
+        Serial.println("[ERROR] MPU6050 — not found! Check: VCC=5V, SDA=D4, SCL=D5, AD0=GND");
     } else {
         imu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);   // ±2 g
         imu.setFullScaleGyroRange(MPU6050_GYRO_FS_250);   // ±250 °/s
@@ -430,8 +429,7 @@ void initSensors() {
 
     // ── MCP9808 (Temperature) ────────────────────────────────
     if (!tempSensor.begin(0x18)) {
-        Serial.println("[ERROR] MCP9808 — not found!"
-                       "  Check: VCC=3.3V, SDA=D4, SCL=D5, A0=A1=A2=GND");
+        Serial.println("[ERROR] MCP9808 — not found! Check: VCC=5V, SDA=D4, SCL=D5, A0=A1=A2=GND");
     } else {
         tempSensor.setResolution(3);
         tempSensor.wake();
@@ -442,93 +440,59 @@ void initSensors() {
 
 // ══════════════════════════════════════════════════════════════
 //  initBLE
-//  Bluefruit.begin(1, 1) → 1 peripheral (phone) + 1 central (chest)
 // ══════════════════════════════════════════════════════════════
 void initBLE() {
-    Bluefruit.begin(1, 1);   // peripheral=1, central=1
-    Bluefruit.setName(DEVICE_NAME);
-    Bluefruit.setTxPower(4);
+    if (!BLE.begin()) {
+        Serial.println("[ERROR] BLE initialization failed! Halting.");
+        while (true) { delay(1000); }
+    }
 
-    // ── Peripheral: Phone ─────────────────────────────────────
-    Bluefruit.Periph.setConnectCallback(periph_connect_callback);
-    Bluefruit.Periph.setDisconnectCallback(periph_disconnect_callback);
+    BLE.setLocalName(DEVICE_NAME);
+    BLE.setAdvertisedService(wristSvc);
 
-    wristSvc.begin();
+    wristSvc.addCharacteristic(dataChar);
+    wristSvc.addCharacteristic(cmdChar);
+    BLE.addService(wristSvc);
 
-    dataChar.setProperties(CHR_PROPS_NOTIFY);
-    dataChar.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
-    dataChar.setMaxLen(256);
-    dataChar.begin();
+    BLE.setEventHandler(BLEConnected,    onBLEConnect);
+    BLE.setEventHandler(BLEDisconnected, onBLEDisconnect);
+    cmdChar.setEventHandler(BLEWritten,  onCmdWrite);
 
-    cmdChar.setProperties(CHR_PROPS_WRITE | CHR_PROPS_WRITE_WO_RESP);
-    cmdChar.setPermission(SECMODE_OPEN, SECMODE_OPEN);
-    cmdChar.setMaxLen(20);
-    cmdChar.setWriteCallback(onCmdWrite);
-    cmdChar.begin();
-
-    Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
-    Bluefruit.Advertising.addTxPower();
-    Bluefruit.Advertising.addService(wristSvc);
-    Bluefruit.ScanResponse.addName();
-    Bluefruit.Advertising.restartOnDisconnect(true);
-    Bluefruit.Advertising.setInterval(32, 244);
-    Bluefruit.Advertising.setFastTimeout(30);
-    Bluefruit.Advertising.start(0);
+    BLE.advertise();
 
     Serial.println("[OK]    BLE Peripheral  (phone — advertising)");
-
-    // ── Central: Chest Module ─────────────────────────────────
-    Bluefruit.Central.setConnectCallback(central_connect_callback);
-    Bluefruit.Central.setDisconnectCallback(central_disconnect_callback);
-
-    chestSvc.begin();
-
-    chestDataChar.begin();
-    chestDataChar.setNotifyCallback(chest_data_callback);
-
-    // Filter by name — UUID filter optional
-    Bluefruit.Scanner.setRxCallback(scan_callback);
-    Bluefruit.Scanner.restartOnDisconnect(true);
-    Bluefruit.Scanner.setInterval(160, 80);  // 100ms interval, 50ms window
-    Bluefruit.Scanner.useActiveScan(false);
-    Bluefruit.Scanner.start(0);              // 0 = scan indefinitely
-
-    Serial.println("[OK]    BLE Central     (chest — scanning)");
+    Serial.println("[OK]    BLE Central     (chest — time-sliced scan)");
 }
 
 
 // ══════════════════════════════════════════════════════════════
-//  PERIPHERAL CALLBACKS — Phone
+//  BLE PERIPHERAL CALLBACKS — Phone
 // ══════════════════════════════════════════════════════════════
-void periph_connect_callback(uint16_t conn_handle) {
-    BLEConnection* conn = Bluefruit.Connection(conn_handle);
-    char peer[32] = {0};
-    conn->getPeerName(peer, sizeof(peer));
-
+void onBLEConnect(BLEDevice central) {
     Serial.print("[PHONE] Connected: ");
-    Serial.println(peer[0] ? peer : "(unknown)");
-
+    Serial.println(central.address());
     streaming = true;
     seqNum    = 0;
     setLedMode(LED_SOLID);
 }
 
-void periph_disconnect_callback(uint16_t conn_handle, uint8_t reason) {
-    (void)conn_handle;
-    (void)reason;
+void onBLEDisconnect(BLEDevice central) {
+    (void)central;
     streaming = false;
     setLedMode(LED_BLINK_SLOW);
     Serial.println("[PHONE] Disconnected — re-advertising...");
+    BLE.advertise();
 }
 
-void onCmdWrite(uint16_t conn_handle, BLECharacteristic* chr,
-                uint8_t* data, uint16_t len) {
-    (void)conn_handle;
-    (void)chr;
+void onCmdWrite(BLEDevice central, BLECharacteristic characteristic) {
+    (void)central;
 
-    char cmd[21];
-    uint16_t n = (len < 20) ? len : 20;
-    memcpy(cmd, data, n);
+    int      len = characteristic.valueLength();
+    if (len <= 0) return;
+
+    char     cmd[21];
+    int      n = (len < 20) ? len : 20;
+    memcpy(cmd, characteristic.value(), n);
     cmd[n] = '\0';
 
     Serial.print("[CMD] ");
@@ -542,93 +506,104 @@ void onCmdWrite(uint16_t conn_handle, BLECharacteristic* chr,
         streaming = false;
         Serial.println("[SESSION] Streaming stopped");
     } else {
-        Serial.print("[CMD] Unknown command: ");
+        Serial.print("[CMD] Unknown: ");
         Serial.println(cmd);
     }
 }
 
 
 // ══════════════════════════════════════════════════════════════
-//  CENTRAL CALLBACKS — Chest Module
+//  BLE CENTRAL — Chest Module
+//
+//  ArduinoBLE does not support true simultaneous Central+Peripheral.
+//  Strategy: scan briefly (500 ms) every 5 s when phone is not
+//  actively streaming. Once chest connects, subscribe to notify
+//  and poll chest data in the main loop.
 // ══════════════════════════════════════════════════════════════
 
-// Manually search for device name in BLE advertisement packet
-// AD structure: [length][type][data...] — name types 0x08 and 0x09
-bool adv_has_name(ble_gap_evt_adv_report_t* report, const char* name) {
-    const uint8_t* data = report->data.p_data;
-    uint16_t       dlen = report->data.len;
-    size_t         nlen = strlen(name);
+// Persistent chest BLE objects (kept alive between scans)
+static BLEDevice     chestDevice;
+static BLECharacteristic chestDataCharacteristic;
 
-    for (uint16_t i = 0; i + 1 < dlen; ) {
-        uint8_t adLen  = data[i];
-        uint8_t adType = data[i + 1];
-        if (adLen == 0) break;
-        if ((adType == 0x08 || adType == 0x09) &&
-            (uint16_t)(adLen - 1) == nlen &&
-            memcmp(&data[i + 2], name, nlen) == 0) {
-            return true;
+void scanForChest() {
+    Serial.println("[CHEST] Scanning for BPSync-Chest...");
+
+    BLE.scanForName(CHEST_DEVICE_NAME);
+    unsigned long start = millis();
+
+    while (millis() - start < CHEST_SCAN_DURATION_MS) {
+        BLE.poll();
+        BLEDevice found = BLE.available();
+        if (found) {
+            BLE.stopScan();
+            connectToChest(found);
+            return;
         }
-        i += adLen + 1;
     }
-    return false;
+
+    BLE.stopScan();
+    Serial.println("[CHEST] Not found — will retry.");
 }
 
-// Scan callback: check device name on each advertisement
-void scan_callback(ble_gap_evt_adv_report_t* report) {
-    if (adv_has_name(report, CHEST_DEVICE_NAME)) {
-        Serial.println("[CHEST] BPSync-Chest found — connecting...");
-        Bluefruit.Central.connect(report);
-    } else {
-        Bluefruit.Scanner.resume();   // other device, continue scanning
-    }
-}
+void connectToChest(BLEDevice& device) {
+    Serial.print("[CHEST] Found — connecting to ");
+    Serial.println(device.address());
 
-// On chest connect: discover service + characteristic, enable notify
-void central_connect_callback(uint16_t conn_handle) {
-    Serial.println("[CHEST] Connected — discovering services...");
-
-    if (!chestSvc.discover(conn_handle)) {
-        Serial.println("[CHEST] Service not found — disconnecting");
-        Bluefruit.disconnect(conn_handle);
+    if (!device.connect()) {
+        Serial.println("[CHEST] Connection failed.");
         return;
     }
 
-    if (!chestDataChar.discover()) {
-        Serial.println("[CHEST] Characteristic not found — disconnecting");
-        Bluefruit.disconnect(conn_handle);
+    if (!device.discoverAttributes()) {
+        Serial.println("[CHEST] Attribute discovery failed.");
+        device.disconnect();
         return;
     }
 
-    if (!chestDataChar.enableNotify()) {
-        Serial.println("[CHEST] Failed to enable notify — disconnecting");
-        Bluefruit.disconnect(conn_handle);
+    BLECharacteristic chr = device.characteristic(CHEST_DATA_UUID);
+    if (!chr) {
+        Serial.println("[CHEST] Characteristic not found.");
+        device.disconnect();
         return;
     }
 
-    chestConnected = true;
-    Serial.println("[CHEST] Ready — receiving ECG + Chest IMU");
+    if (!chr.canSubscribe()) {
+        Serial.println("[CHEST] Cannot subscribe to characteristic.");
+        device.disconnect();
+        return;
+    }
+
+    if (!chr.subscribe()) {
+        Serial.println("[CHEST] Subscribe failed.");
+        device.disconnect();
+        return;
+    }
+
+    chestDevice           = device;
+    chestDataCharacteristic = chr;
+    chestConnected        = true;
+    Serial.println("[CHEST] Connected — receiving ECG + Chest IMU");
 }
 
-// On chest disconnect: reset data, scanner restarts automatically
-void central_disconnect_callback(uint16_t conn_handle, uint8_t reason) {
-    (void)conn_handle;
-    (void)reason;
-    chestConnected = false;
-    ep = 0;  cx = 0;  cy = 0;  cz = 0;  qi_c = 0;
-    Serial.println("[CHEST] Disconnected — rescanning...");
-}
+void readChestData(BLEDevice& chest) {
+    if (!chest.connected()) {
+        chestConnected = false;
+        ep = 0; cx = 0; cy = 0; cz = 0; qi_c = 0;
+        Serial.println("[CHEST] Disconnected — will rescan.");
+        return;
+    }
 
-// On chest data received: parse ChestPacket
-void chest_data_callback(BLEClientCharacteristic* chr,
-                         uint8_t* data, uint16_t len) {
-    (void)chr;
-    if (len >= (uint16_t)sizeof(ChestPacket)) {
-        ChestPacket* pkt = (ChestPacket*)data;
-        ep   = pkt->ep;
-        cx   = pkt->cx;
-        cy   = pkt->cy;
-        cz   = pkt->cz;
-        qi_c = pkt->qi_c;
+    if (chestDataCharacteristic.valueUpdated()) {
+        int len = chestDataCharacteristic.valueLength();
+        if (len >= (int)sizeof(ChestPacket)) {
+            ChestPacket pkt;
+            memcpy(&pkt, chestDataCharacteristic.value(), sizeof(ChestPacket));
+            ep   = pkt.ep;
+            cx   = pkt.cx;
+            cy   = pkt.cy;
+            cz   = pkt.cz;
+            qi_c = pkt.qi_c;
+        }
     }
 }
 
@@ -656,7 +631,7 @@ void readTemperature() {
 
 
 // ══════════════════════════════════════════════════════════════
-//  calculateSQI — Signal Quality Index
+//  calculateSQI
 //
 //  qi_w  : Wrist  — PPG signal present + wrist steady
 //  qi_c  : Chest  — received from Chest module (ChestPacket.qi_c)
@@ -673,10 +648,14 @@ void calculateSQI() {
     bool ppgOK    = (ppg_ir   > SQI_PPG_MIN);
 
     qi_w = (motionOK && ppgOK) ? 1 : 0;
-    // qi_c: comes from chest callback, not computed here
 
-    // Update LED based on signal quality when streaming
-    if (streaming && Bluefruit.connected()) {
+    // Poll chest data if connected
+    if (chestConnected) {
+        readChestData(chestDevice);
+    }
+
+    // Update LED when streaming
+    if (streaming && BLE.connected()) {
         setLedMode(qi_w ? LED_SOLID : LED_BLINK_SQI);
     }
 }
@@ -684,8 +663,6 @@ void calculateSQI() {
 
 // ══════════════════════════════════════════════════════════════
 //  buildJSON
-//  qi_w / qi_c / qi in three separate fields → for backend and ML
-//  When Chest not connected: ep=0 cx=cy=cz=0 qi_c=0 qi=qi_w
 // ══════════════════════════════════════════════════════════════
 void buildJSON(char* buf, int bufSize) {
     uint8_t qi_combined = chestConnected ? (qi_w & qi_c) : qi_w;
@@ -727,7 +704,7 @@ void sendToPhone() {
     char json[256];
     buildJSON(json, sizeof(json));
 
-    dataChar.notify((uint8_t*)json, strlen(json));
+    dataChar.writeValue((uint8_t*)json, strlen(json));
     seqNum++;
 
     // Print to Serial every 50 frames (~5 s)
