@@ -48,8 +48,8 @@
 // ──────────────────────────────────────────────────────────────
 //  EŞIKLER
 // ──────────────────────────────────────────────────────────────
-#define PPG_MIN_SIGNAL   3000    // IR < bu değer → bilek sensörde değil
-#define PPG_GOOD_SIGNAL  15000   // IR > bu değer → bilek için iyi sinyal
+#define PPG_MIN_SIGNAL   10000   // IR < bu değer → bilek sensörde değil
+#define PPG_GOOD_SIGNAL  60000   // IR > bu değer → iyi bilek teması (damar üstü ~97k-100k)
 #define SQI_MOTION_THR   0.25f   // g cinsinden hareket eşiği
 
 // ──────────────────────────────────────────────────────────────

@@ -90,7 +90,7 @@
 //  SQI THRESHOLDS
 // ──────────────────────────────────────────────────────────────
 #define SQI_MOTION_THRESHOLD  4096   // ~0.25 g deviation (16384 = 1g)
-#define SQI_PPG_MIN           3000   // IR < this → no wrist contact
+#define SQI_PPG_MIN           10000  // IR < this → no wrist contact (wrist baseline ~97k-100k)
 
 // ──────────────────────────────────────────────────────────────
 //  CHEST DATA PACKET
