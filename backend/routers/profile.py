@@ -28,6 +28,9 @@ async def get_profile(
             name=current_user.name,
             avatar_url=current_user.avatar_url,
             date_of_birth=current_user.date_of_birth,
+            gender=current_user.gender,
+            weight=current_user.weight,
+            height=current_user.height,
             blood_type=current_user.blood_type,
             emergency_contact=current_user.emergency_contact
         )
@@ -48,6 +51,12 @@ async def update_profile(
         current_user.name = request.name
     if request.date_of_birth is not None:
         current_user.date_of_birth = request.date_of_birth
+    if request.gender is not None:
+        current_user.gender = request.gender
+    if request.weight is not None:
+        current_user.weight = request.weight
+    if request.height is not None:
+        current_user.height = request.height
     if request.blood_type is not None:
         current_user.blood_type = request.blood_type
     if request.emergency_contact is not None:
@@ -64,6 +73,9 @@ async def update_profile(
             name=current_user.name,
             avatar_url=current_user.avatar_url,
             date_of_birth=current_user.date_of_birth,
+            gender=current_user.gender,
+            weight=current_user.weight,
+            height=current_user.height,
             blood_type=current_user.blood_type,
             emergency_contact=current_user.emergency_contact
         ),

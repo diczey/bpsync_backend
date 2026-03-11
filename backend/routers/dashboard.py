@@ -49,6 +49,24 @@ async def get_dashboard_summary(
     ).fetchone()
 
     if not row:
+        from backend.config import settings
+        if settings.use_mock_data:
+            from backend.utils.mock_data import generate_dashboard_summary
+            mock_data = generate_dashboard_summary()
+            health_status = 'HIGH' if mock_data['systolic'] > 140 else 'LOW' if mock_data['systolic'] < 90 else 'NORMAL'
+            return DashboardResponse(
+                success=True,
+                summary=DashboardSummary(
+                    latest_systolic=mock_data['systolic'],
+                    latest_diastolic=mock_data['diastolic'],
+                    latest_heart_rate=mock_data['heart_rate'],
+                    latest_ptt=mock_data['ptt'],
+                    latest_quality=mock_data['quality'],
+                    health_status=health_status,
+                    category=mock_data['category'],
+                    last_updated=str(mock_data['time'])
+                )
+            )
         return DashboardResponse(success=False, message='No readings yet. Start a measurement.')
 
     health_status = 'NORMAL'

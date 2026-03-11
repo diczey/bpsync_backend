@@ -66,6 +66,24 @@ async def get_trends(
     ).fetchall()
 
     if not rows:
+        from backend.config import settings
+        if settings.use_mock_data:
+            from backend.utils.mock_data import generate_trends
+            mock_points = generate_trends(period=period)
+            return TrendResponse(
+                success=True,
+                period=period,
+                points=[
+                    TrendPoint(
+                        bucket=p['bucket'],
+                        avg_systolic=p['avg_systolic'],
+                        avg_diastolic=p['avg_diastolic'],
+                        avg_heart_rate=p['avg_heart_rate'],
+                        count=p['count']
+                    ) for p in mock_points
+                ],
+                message="Mock trends provided for testing."
+            )
         return TrendResponse(success=True, period=period, message='No data for this period.')
 
     return TrendResponse(

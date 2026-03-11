@@ -60,10 +60,13 @@ async def predict_bp(
 ):
     '''Manually trigger XGBoost BP prediction from PTT + HR values.'''
     try:
+        # Use user's real calculated age instead of falling back to default 40
+        user_age = current_user.age
+        
         result = predict_blood_pressure(
             ptt=request.ptt,
             heart_rate=request.heart_rate,
-            age=request.age or 40,
+            age=user_age,
             ptt_std=request.ptt_std or 15,
         )
         msg = '{}/{} mmHg - {}'.format(result['systolic'], result['diastolic'], result['category'])
@@ -86,12 +89,14 @@ async def calibrate_bp(
     '''Calibrate the XGBoost model with a cuff measurement reference.'''
     try:
         model = get_bp_model()
+        user_age = current_user.age
+        
         model.calibrate(
             measured_systolic=request.measured_systolic,
             measured_diastolic=request.measured_diastolic,
             ptt=request.ptt,
             heart_rate=request.heart_rate,
-            age=request.age or 40,
+            age=user_age,
         )
         return {'success': True, 'message': 'Calibration done. Reference: {}/{} mmHg'.format(request.measured_systolic, request.measured_diastolic)}
     except Exception as exc:
@@ -127,6 +132,29 @@ async def get_readings(
         '''),
         {'uid': current_user.id, 'limit': limit},
     ).fetchall()
+    
+    if not rows:
+        from backend.config import settings
+        if settings.use_mock_data:
+            from backend.utils.mock_data import generate_bp_readings
+            mock_readings = generate_bp_readings(current_user.id, count=limit)
+            return BPReadingsResponse(
+                success=True,
+                readings=[
+                    BPReadingDto(
+                        time=r['time'],
+                        user_id=r['user_id'],
+                        systolic=r['systolic'],
+                        diastolic=r['diastolic'],
+                        heart_rate=r['heart_rate'],
+                        ptt=r['ptt'],
+                        quality=r['quality'],
+                        category=r['category'],
+                    ) for r in mock_readings
+                ],
+                message="Mock data provided for testing."
+            )
+
     return BPReadingsResponse(
         success=True,
         readings=[

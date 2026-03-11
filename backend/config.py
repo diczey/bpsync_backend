@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000,http://localhost:8080"
     
     # Mock Data (for development without real sensors)
-    use_mock_data: bool = False
+    use_mock_data: bool = True
     
     @property
     def cors_origins(self) -> List[str]:

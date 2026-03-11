@@ -122,15 +122,8 @@ async def start_streaming(
     # Assign current user to DataManager so bp_readings are written with correct user_id
     ble._dm.set_user_id(current_user.id)
 
-    # Set user age for ML inference (from date_of_birth if available, else default 40)
-    if current_user.date_of_birth:
-        try:
-            from datetime import date
-            dob = date.fromisoformat(current_user.date_of_birth)
-            age = (date.today() - dob).days / 365.25
-            ble._dm.set_user_age(age)
-        except (ValueError, TypeError):
-            pass  # keep default 40 if date_of_birth format is invalid
+    # Set user age for ML inference directly from user's age property
+    ble._dm.set_user_age(current_user.age)
 
     ok = await ble.send_command("START")
     if ok:

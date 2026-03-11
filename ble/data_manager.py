@@ -99,14 +99,34 @@ class DataManager:
         if heart_rate is None or ptt is None:
             logger.info('ML window skipped: not enough peaks')
             return
+        db = self._db_factory()
+        
+        # Read real user age from postgresql db if available
+        user_age = self._user_age
+        try:
+            from backend.models.user import User
+            # using the same session but be careful if db_factory returns timescale db
+            # Assuming db_factory returns postgres for user metadata or we need to query user differently.
+            # wait, db_factory here provides connection to TimescaleDB mostly for sensor data.
+            # Let's import get_db and SessionLocal for User query
+            from backend.database import SessionLocal
+            with SessionLocal() as pg_db:
+                user_record = pg_db.query(User).filter(User.id == user_id).first()
+                if user_record:
+                    user_age = user_record.age
+                    # Update cache for next runs
+                    self._user_age = user_age
+        except Exception as e:
+            logger.warning(f"Could not fetch user age, using default {user_age}: {e}")
+            
         try:
             from backend.services.ml_service import predict_blood_pressure
-            result = predict_blood_pressure(ptt=ptt, heart_rate=heart_rate, age=self._user_age, ptt_std=ptt_std)
+            result = predict_blood_pressure(ptt=ptt, heart_rate=heart_rate, age=user_age, ptt_std=ptt_std)
         except Exception as exc:
             logger.error('ML inference error: %s', exc)
             return
+            
         avg_quality = round(sum(f.qi for f in frames) / len(frames) * 100)
-        db = self._db_factory()
         try:
             db.execute(text('''
                 INSERT INTO bp_readings

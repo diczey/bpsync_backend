@@ -69,6 +69,9 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             name=user.name,
             avatar_url=user.avatar_url,
             date_of_birth=user.date_of_birth,
+            gender=user.gender,
+            weight=user.weight,
+            height=user.height,
             blood_type=user.blood_type,
             emergency_contact=user.emergency_contact
         ),
@@ -125,6 +128,9 @@ async def register(request: LoginRequest, db: Session = Depends(get_db)):
             name=user.name,
             avatar_url=user.avatar_url,
             date_of_birth=user.date_of_birth,
+            gender=user.gender,
+            weight=user.weight,
+            height=user.height,
             blood_type=user.blood_type,
             emergency_contact=user.emergency_contact
         ),
