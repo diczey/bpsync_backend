@@ -1,5 +1,13 @@
 """
-Profile Router - User Profile Management
+Profile Router - User profile management
+
+Exposes CRUD operations for the user's own profile data:
+  GET    /profile — read current profile
+  PUT    /profile — update one or more profile fields
+  DELETE /profile — permanently delete the account
+
+All three endpoints are protected by JWT authentication and operate only
+on the currently authenticated user's record (no admin override here).
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -18,7 +26,8 @@ async def get_profile(
     db: Session = Depends(get_db)
 ):
     """
-    Kullanıcı profilini getir
+    Return the authenticated user's profile data.
+    The mobile Profile screen calls this on load to populate all fields.
     """
     return ProfileResponse(
         success=True,
@@ -44,7 +53,11 @@ async def update_profile(
     db: Session = Depends(get_db)
 ):
     """
-    Kullanıcı profilini güncelle
+    Update writable profile fields for the authenticated user.
+
+    Only fields explicitly provided in the request body are written;
+    omitted fields retain their existing values (partial update / PATCH semantics
+    exposed as PUT because the mobile uses PUT with the full profile form).
     """
     # Update fields if provided
     if request.name is not None:
@@ -89,9 +102,12 @@ async def delete_account(
     db: Session = Depends(get_db)
 ):
     """
-    Kullanıcı hesabını sil
-    
-    DİKKAT: Bu işlem geri alınamaz!
+    Permanently delete the authenticated user's account.
+
+    WARNING: This action is irreversible. All user data in PostgreSQL is removed.
+    Sensor data in TimescaleDB (bp_readings, wristband_data) is NOT cascaded
+    because TimescaleDB tables have no foreign-key constraint to users.
+    If full data removal is required, a separate cleanup job is needed.
     """
     db.delete(current_user)
     db.commit()

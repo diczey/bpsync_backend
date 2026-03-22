@@ -1,5 +1,10 @@
-﻿"""
-Trends Router - BP Trend Analysis from TimescaleDB
+"""
+ ╔══════════════════════════════════════════════════════════════╗
+ ║                  BPSync — Trends Router                      ║
+ ╠══════════════════════════════════════════════════════════════╣
+ ║  Provides time-series BP & HR metrics from TimescaleDB       ║
+ ║  Endpoints: /trends                                          ║
+ ╚══════════════════════════════════════════════════════════════╝
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -14,89 +19,146 @@ from backend.utils.security import get_current_user
 router = APIRouter()
 
 
-class TrendPoint(BaseModel):
-    bucket: str
-    avg_systolic: Optional[float] = None
-    avg_diastolic: Optional[float] = None
-    avg_heart_rate: Optional[float] = None
-    count: int
+# ══════════════════════════════════════════════════════════════
+#  RESPONSE MODELS
+# ══════════════════════════════════════════════════════════════
+
+class TrendDataPoint(BaseModel):
+    """A single {timestamp, value} pair in a trend series"""
+    timestamp: int    # Unix milliseconds — matches Android Long
+    value:     float
+
+
+class TrendDataDto(BaseModel):
+    """
+    One metric's complete trend dataset.
+    'type' is the metric name (e.g. 'systolic') so the mobile can label
+    each chart axis correctly without hard-coding series order.
+    """
+    type:        str
+    data_points: List[TrendDataPoint]
+    average:     float   # Pre-computed so mobile avoids client-side aggregation
+    min:         float
+    max:         float
 
 
 class TrendResponse(BaseModel):
     success: bool
-    period: str
-    points: List[TrendPoint] = []
+    trends:  List[TrendDataDto] = []
     message: Optional[str] = None
 
 
-PERIOD_INTERVAL = {
-    'day':   ('1 hour',  '1 day'),
-    'week':  ('1 day',   '7 days'),
-    'month': ('1 day',  '30 days'),
+# ══════════════════════════════════════════════════════════════
+#  CONFIGURATION & CONSTANTS
+# ══════════════════════════════════════════════════════════════
+PERIOD_BACK = {
+    'day':   '1 day',
+    'week':  '7 days',
+    'month': '30 days',
+}
+
+PERIOD_BUCKET = {
+    'day':   '1 hour',
+    'week':  '6 hours',
+    'month': '1 day',
 }
 
 
+# ══════════════════════════════════════════════════════════════
+#  ENDPOINTS
+# ══════════════════════════════════════════════════════════════
 @router.get('', response_model=TrendResponse)
 async def get_trends(
     period: str = 'week',
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_sensor_db),
 ):
-    '''
-    Aggregated BP trends per time bucket.
-    period: day (hourly buckets), week (daily), month (daily last 30 days)
-    '''
-    bucket_interval, back_interval = PERIOD_INTERVAL.get(period, ('1 day', '7 days'))
+    """
+    Return systolic, diastolic, and heart-rate trend data for the requested period.
+    Aggregates points into time buckets (hourly, 6-hourly, daily) via TimescaleDB,
+    and returns absolute min/max/average summaries across the full period.
 
-    rows = db.execute(
+    Falls back to mock data when no rows exist and USE_MOCK_DATA=true.
+    """
+    back_interval = PERIOD_BACK.get(period, '7 days')
+    bucket_interval = PERIOD_BUCKET.get(period, '6 hours')
+
+    # 1. Fetch total summary (stats across the entire requested period) for the top boxes
+    summary_row = db.execute(
         text('''
-            SELECT
-                time_bucket(:bucket, time) AS bucket,
-                ROUND(AVG(systolic)::numeric, 1)    AS avg_systolic,
-                ROUND(AVG(diastolic)::numeric, 1)   AS avg_diastolic,
-                ROUND(AVG(heart_rate)::numeric, 1)  AS avg_heart_rate,
-                COUNT(*)                            AS count
+            SELECT 
+                AVG(systolic) AS avg_sys, MAX(systolic) AS max_sys, MIN(systolic) AS min_sys,
+                AVG(diastolic) AS avg_dia, MAX(diastolic) AS max_dia, MIN(diastolic) AS min_dia,
+                AVG(heart_rate) AS avg_hr, MAX(heart_rate) AS max_hr, MIN(heart_rate) AS min_hr
             FROM bp_readings
             WHERE user_id = :uid
-              AND time >= NOW() - INTERVAL :back
-            GROUP BY bucket
-            ORDER BY bucket ASC
+              AND time >= NOW() - CAST(:back AS interval)
         '''),
-        {'uid': current_user.id, 'bucket': bucket_interval, 'back': back_interval},
-    ).fetchall()
+        {'uid': current_user.id, 'back': back_interval},
+    ).fetchone()
 
-    if not rows:
+    # If no data exists at all (avg_sys will be None)
+    if not summary_row or summary_row.avg_sys is None:
         from backend.config import settings
         if settings.use_mock_data:
             from backend.utils.mock_data import generate_trends
-            mock_points = generate_trends(period=period)
+            mock_trends = generate_trends(period=period)
             return TrendResponse(
                 success=True,
-                period=period,
-                points=[
-                    TrendPoint(
-                        bucket=p['bucket'],
-                        avg_systolic=p['avg_systolic'],
-                        avg_diastolic=p['avg_diastolic'],
-                        avg_heart_rate=p['avg_heart_rate'],
-                        count=p['count']
-                    ) for p in mock_points
-                ],
-                message="Mock trends provided for testing."
+                trends=mock_trends,
+                message="Mock trend data — no real sensor readings yet."
             )
-        return TrendResponse(success=True, period=period, message='No data for this period.')
+        return TrendResponse(success=True, trends=[], message='No data for this period.')
 
-    return TrendResponse(
-        success=True,
-        period=period,
-        points=[
-            TrendPoint(
-                bucket=str(r.bucket),
-                avg_systolic=r.avg_systolic,
-                avg_diastolic=r.avg_diastolic,
-                avg_heart_rate=r.avg_heart_rate,
-                count=r.count,
-            )
-            for r in rows
-        ],
-    )
+    # 2. Fetch time-bucketed chart data points
+    bucket_rows = db.execute(
+        text('''
+            SELECT 
+                time_bucket(CAST(:bucket AS interval), time) AS bucket_time,
+                AVG(systolic) AS systolic,
+                AVG(diastolic) AS diastolic,
+                AVG(heart_rate) AS heart_rate
+            FROM bp_readings
+            WHERE user_id = :uid
+              AND time >= NOW() - CAST(:back AS interval)
+            GROUP BY bucket_time
+            ORDER BY bucket_time ASC
+        '''),
+        {'uid': current_user.id, 'back': back_interval, 'bucket': bucket_interval},
+    ).fetchall()
+
+    points_sys, points_dia, points_hr = [], [], []
+    for row in bucket_rows:
+        ts = int(row.bucket_time.timestamp() * 1000)
+        if row.systolic is not None:
+            points_sys.append(TrendDataPoint(timestamp=ts, value=round(float(row.systolic), 2)))
+        if row.diastolic is not None:
+            points_dia.append(TrendDataPoint(timestamp=ts, value=round(float(row.diastolic), 2)))
+        if row.heart_rate is not None:
+            points_hr.append(TrendDataPoint(timestamp=ts, value=round(float(row.heart_rate), 2)))
+
+    trends = [
+        TrendDataDto(
+            type="systolic",
+            data_points=points_sys,
+            average=round(float(summary_row.avg_sys), 2),
+            min=round(float(summary_row.min_sys), 2),
+            max=round(float(summary_row.max_sys), 2),
+        ),
+        TrendDataDto(
+            type="diastolic",
+            data_points=points_dia,
+            average=round(float(summary_row.avg_dia), 2),
+            min=round(float(summary_row.min_dia), 2),
+            max=round(float(summary_row.max_dia), 2),
+        ),
+        TrendDataDto(
+            type="heart_rate",
+            data_points=points_hr,
+            average=round(float(summary_row.avg_hr), 2),
+            min=round(float(summary_row.min_hr), 2),
+            max=round(float(summary_row.max_hr), 2),
+        )
+    ]
+
+    return TrendResponse(success=True, trends=trends)

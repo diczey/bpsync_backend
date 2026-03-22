@@ -1,5 +1,12 @@
-﻿"""
-Reports Router - Weekly BP Summary from TimescaleDB
+"""
+Reports Router - Weekly and monthly BP summaries from TimescaleDB
+
+Aggregates bp_readings at day-level granularity to produce structured reports
+that the mobile ReportsScreen can display as charts and statistics.
+
+Endpoints:
+  GET /reports/weekly   — 7-day summary (week_offset=0 is current week)
+  GET /reports/monthly  — 30-day summary (month_offset=0 is current month)
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -40,7 +47,17 @@ class WeeklyReportResponse(BaseModel):
 
 
 def _health_score(avg_systolic, avg_diastolic):
-    '''Simple score 0-100 based on average BP category.'''
+    """
+    Compute a 0-100 wellness score from average BP values.
+
+    Scoring is based on simplified JNC-8 / AHA 2017 categories:
+      < 120/80  → 100  (normal)
+      < 130/x   →  85  (elevated)
+      < 140/x   →  65  (stage 1 hypertension)
+      < 180/x   →  40  (stage 2 hypertension)
+      >= 180/x  →  20  (hypertensive crisis)
+    Used by the mobile Reports screen to render a colour-coded score badge.
+    """
     if avg_systolic is None:
         return 0
     if avg_systolic < 120 and avg_diastolic < 80:
@@ -60,10 +77,16 @@ async def get_weekly_report(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_sensor_db),
 ):
-    '''
-    Weekly BP report. week_offset=0 is current week, 1 is last week, etc.
-    Reads from TimescaleDB bp_readings.
-    '''
+    """
+    Return a 7-day BP report for the specified week.
+
+    week_offset=0 → current week, 1 → last week, etc.
+    Aggregates bp_readings at 1-day granularity using TimescaleDB
+    time_bucket() for efficient partitioned queries.
+    Falls back to WeeklyReportResponse(success=False) when no data exists;
+    mock mode is NOT applied here because the mobile already handles empty
+    state with a friendly illustration.
+    """
     # Daily aggregation for the selected week
     rows = db.execute(
         text('''
@@ -130,7 +153,13 @@ async def get_monthly_report(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_sensor_db),
 ):
-    '''30-day BP report with daily aggregation.'''
+    """
+    Return a 30-day BP report for the specified month.
+
+    month_offset=0 → current 30-day window, 1 → previous 30 days, etc.
+    Reuses the WeeklyReportResponse schema (week_start/week_end fields
+    effectively hold month_start/month_end in this context).
+    """
     rows = db.execute(
         text('''
             SELECT

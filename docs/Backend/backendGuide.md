@@ -1,295 +1,297 @@
-BPSync Backend – Architecture & Integration Guide
+# BPSync Backend – Architecture & Integration Guide
 
-* import atarken dosya pathlerine dikkt edelim lütfen.
+> Last updated: 2026-03-18  
+> Branch: `devfixed_frontend_version2`
 
-1. System Overview
+---
 
-BPSync backend is built using a dual-database architecture designed to separate transactional application data from high-frequency time-series sensor data.
+## 1. System Overview
 
-Architecture Flow
+BPSync backend is built with a **dual-database architecture** separating transactional data from high-frequency time-series sensor data.
 
-Frontend / Hardware Device
-→ FastAPI Backend
-→ PostgreSQL (Application Data)
-→ TimescaleDB (Sensor Time-Series Data)
+```
+Mobile App (Android)
+  → FastAPI Backend (port 8000)
+      → PostgreSQL  (users, notifications)
+      → TimescaleDB (wristband_data, ecg_data, bp_readings)
+```
 
-This separation provides:
+---
 
-Clear separation of concerns
+## 2. Technology Stack
 
-Optimized time-series performance
+| Component | Technology |
+|---|---|
+| REST API | FastAPI + Uvicorn |
+| ORM | SQLAlchemy |
+| App DB | PostgreSQL 16 |
+| Sensor DB | TimescaleDB |
+| Orchestration | Docker Compose |
+| Auth | JWT (python-jose) |
+| ML | XGBoost (BP inference from PTT) |
 
-Scalability for high-frequency ingestion
+---
 
-Clean production-ready structure
+## 3. Running the Backend
 
-2. Technology Stack
-
-FastAPI (REST API)
-
-SQLAlchemy (DB connection layer)
-
-PostgreSQL 16 (Application DB)
-
-TimescaleDB (Time-series DB)
-
-Docker Compose (Orchestration)
-
-Uvicorn (ASGI server)
-
-3. Repository Structure
-database/
- ├── docker-compose.yml
- ├── timescale_schema.sql
-
-backend/
- ├── Dockerfile
- ├── requirements.txt
- └── app/
-      ├── main.py
-      ├── config.py
-      ├── database.py
-      ├── routers/
-      ├── schemas/
-      ├── models/
-      └── services/
-Important Files
-
-docker-compose.yml → Starts PostgreSQL, TimescaleDB and Backend
-
-timescale_schema.sql → Creates hypertables
-
-database.py → Defines two DB engines (Postgres + Timescale)
-
-routers/sensor.py → Sensor ingestion endpoints
-
-4. Running the Backend
-
-From repository root:
-
+```powershell
 cd database
 docker compose up -d --build
+docker ps        # verify postgres, timescaledb, backend are Up
+```
 
-Check containers:
+Swagger UI: **http://localhost:8000/docs**
 
-docker ps
+---
 
-Swagger documentation:
+## 4. Database Architecture
 
-http://localhost:8000/docs
-5. Database Architecture
-5.1 PostgreSQL (Application Database)
+### PostgreSQL — `bpsync`
+Stores: users, notifications (transactional records)  
+Connection: `postgresql://bpsync_app:bpsync_password@localhost:5432/bpsync`
 
-Database: bpsync
-Purpose:
+### TimescaleDB — `bpsync_sensor`
+Stores: wristband_data (10 Hz frames), ecg_data, bp_readings (ML output)  
+Connection: `postgresql://bpsync_sensor_app:bpsync_sensor_password@timescaledb:5432/bpsync_sensor`
 
-Users
+**TimescaleDB hypertables:**
 
-Authentication
+| Table | Write Rate | Written By |
+|---|---|---|
+| `wristband_data` | 10 Hz | `ble/data_manager.py` |
+| `ecg_data` | streaming | `ble/data_manager.py` |
+| `bp_readings` | ~1/10 s | ML inference in `data_manager.py` |
 
-Notifications
+---
 
-Dashboard data
+## 5. API Endpoint Reference
 
-Non-time-series records
+> All protected endpoints require `Authorization: Bearer <JWT>` header.
 
-Connection (inside Docker):
+### Auth — `/auth`
 
-postgresql://bpsync_app:bpsync_password@postgres:5432/bpsync
-5.2 TimescaleDB (Sensor Database)
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | `/auth/login` | `{email, password}` | `LoginResponse` |
+| POST | `/auth/register` | `{email, password, name, date_of_birth?, gender?, weight?, height?, blood_type?, emergency_contact?}` | `LoginResponse` |
+| POST | `/auth/logout` | — | `{success}` |
 
-Database: bpsync_sensor
-Purpose:
-
-ECG stream
-
-Wristband telemetry
-
-High-frequency sensor ingestion
-
-Hypertables:
-
-wristband_data
-
-ecg_data
-
-Connection:
-
-postgresql://bpsync_sensor_app:bpsync_sensor_password@timescaledb:5432/bpsync_sensor
-
-Timescale is optimized for:
-
-Time-based partitioning
-
-Aggregations
-
-Range queries
-
-6. Integration Guide – Frontend Developers
-
-Frontend must never connect directly to databases.
-All communication happens through REST API.
-
-6.1 Base URL
-http://localhost:8000
-6.2 Authentication Flow
-
-POST /auth/register
-
-POST /auth/login
-
-Store JWT token
-
-Send token in header:
-
-Authorization: Bearer <JWT>
-6.3 Sensor Visualization
-
-Frontend should:
-
-Fetch time-series data through backend endpoints (future analytics endpoints)
-
-Never query Timescale directly
-
-Use OpenAPI schema for endpoint definitions:
-
-http://localhost:8000/openapi.json
-6.4 CORS
-
-Allowed origins are configured in:
-
-backend/app/config.py
-
-Update if frontend runs on different port.
-
-7. Integration Guide – Hardware / Sensor Developers
-
-Hardware devices must send HTTP POST requests to backend.
-
-All sensor data is ingested via backend and written to TimescaleDB.
-
-7.1 Wristband Data Ingestion
-
-Endpoint:
-
-POST /sensor/wristband
-
-Payload format:
-
+**LoginResponse:**
+```json
 {
-  "time": "2026-02-26T20:40:00Z",
-  "patient_id": 1,
-  "heart_rate": 78,
+  "success": true,
+  "token": "<JWT>",
+  "user": { "id", "email", "name", "avatar_url", "date_of_birth", "gender",
+            "weight", "height", "blood_type", "emergency_contact" },
+  "message": "Registration successful"
+}
+```
+
+---
+
+### Dashboard — `/dashboard`
+
+| Method | Path | Returns |
+|---|---|---|
+| GET | `/dashboard/summary` | `DashboardResponse` |
+| GET | `/dashboard/health-status` | `HealthStatusResponse` |
+| GET | `/dashboard/pulse` | `PulseResponse` |
+| GET | `/dashboard/ppg/signal` | `PpgSignalResponse` |
+
+**DashboardResponse:**
+```json
+{
+  "success": true,
+  "summary": {
+    "latest_systolic": 120,
+    "latest_diastolic": 80,
+    "latest_heart_rate": 72,
+    "latest_spo2": 98,
+    "latest_temperature": 36.6,
+    "health_status": "NORMAL",
+    "last_updated": 1742300400000
+  }
+}
+```
+
+> `last_updated` is a **Unix milliseconds timestamp** (matches Android `Long`).  
+> `health_status` values: `"NORMAL"`, `"HIGH"`, `"LOW"`, `"ELEVATED"`  
+> `latest_spo2` comes from a constant 98 until the SpO2 inference pipeline is added.  
+> `latest_temperature` is fetched from the most recent `wristband_data` row.
+
+---
+
+### Health Readings — `/readings`
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/readings?limit=50` | — | `HealthReadingsResponse` |
+| POST | `/readings` | `HealthReadingCreate` | `HealthReadingsResponse` |
+
+**HealthReadingDto:**
+```json
+{
+  "id": "<user_id>-<timestamp_ms>",
+  "user_id": "abc-123",
+  "timestamp": 1742300400000,
+  "heart_rate": 72,
+  "systolic_bp": 120,
+  "diastolic_bp": 80,
+  "spo2": null,
+  "temperature": null,
+  "ecg_data": null,
+  "ppg_data": null
+}
+```
+
+> `spo2` and `temperature` are `null` for rows sourced from `bp_readings` (those columns don't exist there yet). Manual readings submitted via POST do include them in the response echo.
+
+**HealthReadingCreate (POST body):**
+```json
+{
+  "timestamp": 1742300400000,
+  "heart_rate": 72,
+  "systolic_bp": 120,
+  "diastolic_bp": 80,
   "spo2": 98,
-  "movement": 0.12
+  "temperature": 36.6
 }
+```
 
-Field Requirements:
+---
 
-time → ISO 8601 timestamp (UTC recommended)
+### Trends — `/trends`
 
-patient_id → must match existing user
+| Method | Path | Returns |
+|---|---|---|
+| GET | `/trends?period=week` | `TrendResponse` |
 
-Other fields optional but recommended
+**period** values: `day` (last 24 h), `week` (last 7 days), `month` (last 30 days)
 
-Behavior:
-
-Data is written directly into wristband_data hypertable
-
-Insert is atomic
-
-No local buffering inside backend
-
-7.2 ECG Data Ingestion
-
-Endpoint:
-
-POST /sensor/ecg
-
-Payload:
-
+**TrendResponse:**
+```json
 {
-  "time": "2026-02-26T20:40:01Z",
-  "patient_id": 1,
-  "ecg_value": 0.83
+  "success": true,
+  "trends": [
+    {
+      "type": "systolic",
+      "data_points": [{"timestamp": 1742200000000, "value": 118.0}, ...],
+      "average": 121.5,
+      "min": 110.0,
+      "max": 135.0
+    },
+    { "type": "diastolic", ... },
+    { "type": "heart_rate", ... }
+  ]
 }
+```
 
-This writes to ecg_data hypertable.
+> Always returns three TrendDataDto items (systolic, diastolic, heart_rate) even if a metric has no data (empty `data_points`, zeros for average/min/max).
 
-7.3 Important Hardware Notes
+---
 
-Use UTC timestamps
+### Reports — `/reports`
 
-Ensure clock synchronization
+| Method | Path | Returns |
+|---|---|---|
+| GET | `/reports/weekly?week_offset=0` | `WeeklyReportResponse` |
+| GET | `/reports/monthly?month_offset=0` | `WeeklyReportResponse` |
 
-For high-frequency streaming, consider batching (future enhancement)
+**WeeklyReport:**
+```json
+{
+  "week_start": "2026-03-11",
+  "week_end": "2026-03-17",
+  "avg_systolic": 121.4,
+  "avg_diastolic": 79.2,
+  "avg_heart_rate": 73.1,
+  "readings_count": 28,
+  "health_score": 85,
+  "daily_summaries": [{ "date": "2026-03-11", "avg_systolic": 119.0, "avg_diastolic": 78.0, "avg_heart_rate": 72.5, "reading_count": 4 }, ...]
+}
+```
 
-Backend currently accepts single-record ingestion
+---
 
-8. Internal Backend Design
-Dual Engine Strategy
+### Profile — `/profile`
 
-In database.py:
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/profile` | — | `ProfileResponse` |
+| PUT | `/profile` | `ProfileUpdateRequest` | `ProfileResponse` |
+| DELETE | `/profile` | — | `{success}` |
 
-user_engine → PostgreSQL
+---
 
-sensor_engine → TimescaleDB
+### BLE — `/ble`
 
-Separate session dependencies:
+| Method | Path | Returns |
+|---|---|---|
+| GET | `/ble/status` | `BLEStatusResponse` |
+| POST | `/ble/scan` | `ScanResult` |
+| POST | `/ble/start` | `CommandResponse` |
+| POST | `/ble/stop` | `CommandResponse` |
+| GET | `/ble/stats` | DataManager frame statistics |
 
-get_db() → App data
+---
 
-get_sensor_db() → Sensor data
+### ML Readings — `/readings`
 
-This prevents cross-database contamination.
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | `/readings/predict-bp` | `{ptt, heart_rate, age?, ptt_std?}` | `BPPredictionResponse` |
+| POST | `/readings/calibrate-bp` | `{measured_systolic, measured_diastolic, ptt, heart_rate, age?}` | `{success, message}` |
+| GET | `/readings/model-info` | — | Model status + feature importances |
 
-9. Timescale Initialization
+---
 
-timescale_schema.sql is mounted into:
+## 6. Mock Data Mode
 
-/docker-entrypoint-initdb.d/
+Set `USE_MOCK_DATA=true` in `backend/.env` to enable mock mode.
 
-It runs automatically only when Timescale volume is first created.
+In mock mode:
+- `GET /dashboard/summary` → generates realistic BP summary
+- `GET /readings` → generates 50 historical readings with ECG/PPG waveforms
+- `GET /trends?period=*` → generates time-series for systolic, diastolic, heart_rate
+- `GET /notifications` → generates 10 sample notifications (first 4 unread)
+- `POST /auth/login` → auto-creates user if not found (quick onboarding for dev)
 
-To reset Timescale:
+---
 
-docker compose down
-docker volume rm database_tsdata
-docker compose up -d timescaledb
-10. Production Considerations
+## 7. Code Conventions
 
-Before production:
+- Every **function and class** has an English docstring explaining what it does and why it exists there.
+- Every **global constant** has an inline comment explaining the value choice (e.g. why 98 for default SpO2).
+- Schema field names match the Android `Models.kt` `@SerializedName` values exactly.
+- When adding a new endpoint, update this guide in the same commit.
 
-Replace hardcoded credentials
+---
 
-Use environment secrets
+## 8. Changelog
 
-Enable HTTPS (reverse proxy)
+### 2026-03-18 — Mobile-Backend Schema Alignment
 
-Add rate limiting
+| File | Change |
+|---|---|
+| `routers/auth.py` | Added `RegisterRequest` with name + profile fields; register endpoint now uses it instead of `LoginRequest` |
+| `routers/dashboard.py` | Added `latest_spo2`, `latest_temperature`; changed `last_updated` from `str` to Unix ms `int`; added wristband_data temperature query; extracted `_classify_bp` helper |
+| `routers/readings.py` | Renamed `systolic→systolic_bp`, `diastolic→diastolic_bp`; added surrogate `id` field; changed `time→timestamp` (Unix ms); added `POST /readings` endpoint for manual entry |
+| `routers/trends.py` | Complete rewrite — response format changed from `{bucket, avg_systolic, ...}` to `{type, data_points, average, min, max}` matching Android `TrendDataDto` |
+| `routers/reports.py` | English comments only (schema was already correct) |
+| `routers/notifications.py` | English comments only |
+| `routers/profile.py` | English comments only |
+| `utils/mock_data.py` | Added `generate_health_readings()`, `generate_trends()`; fixed `generate_dashboard_summary()` to use timezone-aware UTC timestamps; updated notification templates to English |
 
-Add retention policies in Timescale
+---
 
-Add sensor batching endpoint
+## 9. Production Checklist
 
-Protect sensor endpoints with authentication
-
-11. Current System Capabilities
-
-✔ Dual database architecture
-✔ Time-series hypertable ingestion
-✔ Dockerized environment
-✔ Swagger API documentation
-✔ Authentication system
-✔ Sensor ingestion endpoints
-✔ Clean separation of application vs sensor data
-
-Backend is ready for:
-
-Frontend integration
-
-Hardware data ingestion
-
-ML prediction integration
-
-Trend analytics development
+- [ ] Replace SHA-256 password hashing with bcrypt
+- [ ] Use environment secrets (not hardcoded credentials)
+- [ ] Enable HTTPS (reverse proxy / nginx)
+- [ ] Add rate limiting
+- [ ] Add Timescale retention policies
+- [ ] Add SpO2 inference from `ppg_ir`/`ppg_red` in `data_manager.py`
+- [ ] Add sensor batching endpoint for high-frequency ingestion
+- [ ] Protect sensor endpoints with authentication
+- [ ] Cascade delete sensor data when user account is removed

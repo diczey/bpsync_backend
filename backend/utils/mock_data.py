@@ -1,26 +1,30 @@
 """
-Mock Data Generator - Sensör Verileri Olmadan Geliştirme İçin
+Mock Data Generator — Development without real sensors
 
-Bu modül gerçek sensör verileriniz gelmeden önce
-geliştirme ve test için gerçekçi sahte veriler üretir.
+This module generates physiologically realistic fake data so the mobile app
+can be developed and tested before actual BLE hardware is connected.
 
-Fizyolojik Aralıklar:
-- Kalp atış hızı: 60-100 bpm (normal yetişkin)
-- Sistolik BP: 90-140 mmHg
-- Diyastolik BP: 60-90 mmHg
-- SpO2: 95-100%
-- Vücut sıcaklığı: 36.0-37.5°C
-- PTT: 200-400 ms
+All functions return plain dicts whose keys match the Pydantic DTO field names
+used in the routers, so they can be unpacked directly with **kwargs.
+
+Physiological reference ranges used:
+  Heart rate:    60-100 bpm (normal adult resting)
+  Systolic BP:   90-140 mmHg
+  Diastolic BP:  60-90  mmHg  (systolic - diastolic >= 30 always)
+  SpO2:          95-100 %
+  Body temp:     36.1-37.2 °C
+  PTT:           200-400 ms  (inversely correlated with BP)
 """
 import random
 import math
-from datetime import datetime, timedelta
-from typing import List, Tuple
 import uuid
+from datetime import datetime, timedelta, timezone
+from typing import List, Tuple
 
 
 def generate_heart_rate(base: int = 75, variation: int = 15) -> int:
-    """Generate realistic heart rate"""
+    """Generate realistic heart rate (bpm)."""
+    # Ensure heart rate stays within a plausible range
     return max(55, min(120, base + random.randint(-variation, variation)))
 
 
@@ -152,52 +156,71 @@ def generate_health_reading(user_id: str, timestamp: int = None) -> dict:
     }
 
 
-def generate_historical_readings(user_id: str, days: int = 7, readings_per_day: int = 4) -> List[dict]:
-    """Generate historical health readings for the past N days"""
+def generate_health_readings(user_id: str, count: int = 50) -> List[dict]:
+    """
+    Generate mock readings in the HealthReadingDto schema used by GET /readings.
+
+    Each dict has the same keys as HealthReadingDto so routers can do
+    HealthReadingDto(**r) without any field mapping.
+    Short ECG/PPG waveforms are included so the mobile waveform charts
+    have data to render during development.
+    """
+    now = datetime.now(timezone.utc)
     readings = []
-    now = datetime.now()
-    
-    for day_offset in range(days):
-        day = now - timedelta(days=day_offset)
-        
-        for reading_num in range(readings_per_day):
-            # Spread readings throughout the day
-            hour = 7 + (reading_num * 4)  # 7:00, 11:00, 15:00, 19:00
-            reading_time = day.replace(hour=hour, minute=random.randint(0, 59))
-            timestamp = int(reading_time.timestamp() * 1000)
-            
-            reading = generate_health_reading(user_id, timestamp)
-            readings.append(reading)
-    
-    # Sort by timestamp descending (newest first)
+
+    for i in range(count):
+        # Spread readings backwards in time (one per ~6 hours)
+        ts = now - timedelta(hours=i * 6 + random.randint(0, 3))
+        ts_ms = int(ts.timestamp() * 1000)
+        systolic, diastolic = generate_blood_pressure()
+
+        readings.append({
+            "id":           f"{user_id}-{ts_ms}",
+            "user_id":      user_id,
+            "timestamp":    ts_ms,
+            "heart_rate":   generate_heart_rate(),
+            "systolic_bp":  systolic,      # Matches HealthReadingDto.systolicBp
+            "diastolic_bp": diastolic,     # Matches HealthReadingDto.diastolicBp
+            "spo2":         generate_spo2(),
+            "temperature":  generate_temperature(),
+            "ecg_data":     generate_ecg_waveform(duration_seconds=1.0),
+            "ppg_data":     generate_ppg_waveform(duration_seconds=1.0),
+        })
+
+    # Newest first — matches ORDER BY time DESC from the real query
     readings.sort(key=lambda x: x["timestamp"], reverse=True)
     return readings
 
 
 def generate_dashboard_summary(user_id: str) -> dict:
-    """Generate dashboard summary data"""
+    """
+    Generate a dashboard summary dict that matches DashboardSummary in dashboard.py.
+
+    user_id is accepted so this function can be extended to produce
+    user-specific patterns (e.g. personalised baselines) in the future.
+    last_updated is returned as Unix milliseconds to match the Android Long field.
+    """
     systolic, diastolic = generate_blood_pressure()
     heart_rate = generate_heart_rate()
     spo2 = generate_spo2()
-    
-    # Determine health status
-    if systolic > 140 or diastolic > 90:
+
+    if systolic > 140:
         health_status = "HIGH"
-    elif systolic < 90 or diastolic < 60:
+    elif systolic < 90:
         health_status = "LOW"
     elif spo2 < 95 or heart_rate > 100:
         health_status = "ELEVATED"
     else:
         health_status = "NORMAL"
-    
+
     return {
-        "latest_heart_rate": heart_rate,
-        "latest_systolic": systolic,
-        "latest_diastolic": diastolic,
-        "latest_spo2": spo2,
+        "latest_systolic":    systolic,
+        "latest_diastolic":   diastolic,
+        "latest_heart_rate":  heart_rate,
+        "latest_spo2":        spo2,
         "latest_temperature": generate_temperature(),
-        "health_status": health_status,
-        "last_updated": int(datetime.now().timestamp() * 1000)
+        "health_status":      health_status,
+        "last_updated":       int(datetime.now(timezone.utc).timestamp() * 1000),
     }
 
 
@@ -320,36 +343,103 @@ def generate_weekly_report(user_id: str, week_offset: int = 0) -> dict:
 
 
 def generate_notifications(user_id: str, count: int = 10) -> List[dict]:
-    """Generate sample notifications"""
+    """
+    Generate sample notification dicts that match NotificationDto in schemas/notifications.py.
+
+    The first 4 are marked unread (is_read=False) so the mobile badge counter
+    shows a non-zero value during development.
+    """
     notification_templates = [
-        ("alert", "Yüksek Kan Basıncı", "Sistolik değeriniz 140 mmHg üzerinde ölçüldü"),
-        ("reminder", "Ölçüm Hatırlatması", "Günlük kan basıncı ölçümünüzü yapmayı unutmayın"),
-        ("achievement", "Başarı!", "Bu hafta tüm hedeflerinizi tamamladınız"),
-        ("info", "Haftalık Rapor", "Haftalık sağlık raporunuz hazır"),
-        ("reminder", "Egzersiz Zamanı", "30 dakikalık yürüyüş hedefinize ulaşmak için harekete geçin"),
-        ("alert", "Düşük SpO2", "Oksijen satürasyonunuz normalin altında"),
-        ("info", "İpucu", "Stresi azaltmak için derin nefes egzersizleri deneyin"),
-        ("achievement", "Tutarlılık Ödülü", "5 gün üst üste ölçüm yaptınız!"),
+        ("alert",       "High Blood Pressure",  "Systolic reading exceeds 140 mmHg"),
+        ("reminder",    "Measurement Reminder", "Don't forget your daily BP check"),
+        ("achievement", "Goal Reached!",         "You completed all weekly goals"),
+        ("info",        "Weekly Report",         "Your weekly health report is ready"),
+        ("reminder",    "Exercise Time",         "30-minute walk goal — let's go!"),
+        ("alert",       "Low SpO2",              "Oxygen saturation is below normal"),
+        ("info",        "Health Tip",            "Try deep breathing to reduce stress"),
+        ("achievement", "Consistency Award",     "5 consecutive days of measurements!"),
     ]
-    
-    now = datetime.now()
+
+    now = datetime.now(timezone.utc)
     notifications = []
-    
+
     for i in range(count):
         template = random.choice(notification_templates)
         timestamp = int((now - timedelta(hours=i * 3 + random.randint(0, 2))).timestamp() * 1000)
-        
+
         notifications.append({
-            "id": str(uuid.uuid4()),
-            "user_id": user_id,
-            "type": template[0],
-            "title": template[1],
-            "message": template[2],
+            "id":        str(uuid.uuid4()),
+            "user_id":   user_id,
+            "type":      template[0],
+            "title":     template[1],
+            "message":   template[2],
             "timestamp": timestamp,
-            "is_read": i > 3  # First 4 are unread
+            "is_read":   i > 3,   # First 4 are unread to populate the badge counter
         })
-    
-    # Sort by timestamp descending
+
     notifications.sort(key=lambda x: x["timestamp"], reverse=True)
     return notifications
 
+
+# ---------------------------------------------------------------------------
+# Trends mock — returns List[TrendDataDto-compatible dicts]
+# One dict per metric: systolic, diastolic, heart_rate
+# ---------------------------------------------------------------------------
+
+# Number of data points per period — controls chart density
+_TREND_POINTS = {'day': 24, 'week': 28, 'month': 30}
+
+
+def generate_trends(period: str = 'week') -> list:
+    """
+    Generate mock trend data that matches the TrendDataDto schema used by
+    GET /trends.  Returns a plain list of dicts so the router can pass them
+    directly to TrendDataDto(**item).
+
+    Each dict has: type, data_points ([{timestamp, value}]), average, min, max.
+    Three metrics are always returned: systolic, diastolic, heart_rate.
+
+    _TREND_POINTS controls how many samples are generated per period so charts
+    look appropriately dense without overloading the parser.
+    """
+    n_points = _TREND_POINTS.get(period, 28)
+    now = datetime.now(timezone.utc)
+    result = []
+
+    # Each metric generator: (type_name, value_callable)
+    generators = [
+        ('systolic',   lambda: generate_blood_pressure()[0]),
+        ('diastolic',  lambda: generate_blood_pressure()[1]),
+        ('heart_rate', lambda: generate_heart_rate()),
+    ]
+
+    for metric_type, value_fn in generators:
+        points = []
+        values = []
+
+        for i in range(n_points):
+            # Spread points evenly across the period window
+            if period == 'day':
+                ts = now - timedelta(hours=i)
+            elif period == 'month':
+                ts = now - timedelta(days=i)
+            else:  # week — one point every 6 hours
+                ts = now - timedelta(hours=i * 6)
+
+            val = float(value_fn())
+            ts_ms = int(ts.timestamp() * 1000)
+            points.append({'timestamp': ts_ms, 'value': val})
+            values.append(val)
+
+        # Sort ascending so mobile charts render left-to-right correctly
+        points.sort(key=lambda p: p['timestamp'])
+
+        result.append({
+            'type':        metric_type,
+            'data_points': points,
+            'average':     round(sum(values) / len(values), 2),
+            'min':         round(min(values), 2),
+            'max':         round(max(values), 2),
+        })
+
+    return result
