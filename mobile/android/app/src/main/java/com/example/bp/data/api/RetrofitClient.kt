@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
 
     // 10.0.2.2 is the Android Emulator alias to access host's localhost
-    private const val BASE_URL = "http://10.0.2.2:8000/"
+    private const val BASE_URL = "https://bpsyncbackend-production.up.railway.app/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY

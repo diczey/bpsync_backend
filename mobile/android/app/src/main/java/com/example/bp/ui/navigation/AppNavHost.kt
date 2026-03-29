@@ -59,6 +59,10 @@ fun AppNavHost() {
                 onNavigateToProfile = { navController.navigate(Routes.PROFILE) },
                 onNavigateToBle = { navController.navigate(Routes.BLE) },
                 onNavigateToReports = { navController.navigate(Routes.REPORTS) },
+                onNavigateToBloodPressure = { navController.navigate(Routes.READINGS) },
+                onNavigateToPulse = { navController.navigate(Routes.READINGS) },
+                onNavigateToPpg = { navController.navigate(Routes.READINGS) },
+                onNavigateToSettings = { navController.navigate(Routes.PROFILE) },
                 onLogout = {
                     authViewModel.logout()
                     navController.navigate(Routes.LOGIN) {

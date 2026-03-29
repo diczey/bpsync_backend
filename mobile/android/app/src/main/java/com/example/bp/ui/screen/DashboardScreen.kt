@@ -23,7 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bp.ui.theme.*
-import kotlin.random.Random
+import com.example.bp.ui.viewmodel.DashboardViewModel
 
 // Color tokens matching React code
 private val BgFrom = Color(0xFFE9F1FC)
@@ -36,6 +36,8 @@ private val TextGray = Color(0xFF6B7280)
 
 @Composable
 fun DashboardScreen(
+    token: String,
+    viewModel: DashboardViewModel,
     onNavigateToReadings: () -> Unit,
     onNavigateToTrends: () -> Unit,
     onNavigateToProfile: () -> Unit,
@@ -47,23 +49,26 @@ fun DashboardScreen(
     onNavigateToSettings: () -> Unit,
     onLogout: () -> Unit
 ) {
-    var systolic by remember { mutableIntStateOf(120) }
-    var diastolic by remember { mutableIntStateOf(80) }
-    var pulse by remember { mutableIntStateOf(72) }
-    var spo2 by remember { mutableIntStateOf(98) }
+    val uiState by viewModel.uiState.collectAsState()
+
+    // Load real data whenever token changes
+    LaunchedEffect(token) {
+        if (token.isNotEmpty()) {
+            viewModel.loadAll(token)
+        }
+    }
+
+    // Use API data when available, fall back to defaults
+    val systolic  = uiState.summary?.latestSystolic  ?: 0
+    val diastolic = uiState.summary?.latestDiastolic ?: 0
+    val pulse     = uiState.summary?.latestHeartRate  ?: 0
+    val spo2      = uiState.summary?.latestSpo2       ?: 0
 
     var menuOpen by remember { mutableStateOf(false) }
 
     val bleConnected = true
     val bleDeviceName = "BP Monitor Pro"
     val bleBattery = 85
-
-    fun generateNewReading() {
-        systolic = Random.nextInt(110, 141)
-        diastolic = Random.nextInt(70, 91)
-        pulse = Random.nextInt(65, 86)
-        spo2 = Random.nextInt(95, 101)
-    }
 
     Box(
         modifier = Modifier
@@ -244,14 +249,30 @@ fun DashboardScreen(
                     }
                 }
 
-                // Action Button
+                // Loading / Error state
+                if (uiState.isLoading) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = PrimaryBlue
+                    )
+                }
+                uiState.error?.let { errorMsg ->
+                    Text(
+                        text = errorMsg,
+                        color = Color(0xFFEF4444),
+                        fontSize = 13.sp,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                // Refresh Button
                 Button(
-                    onClick = { generateNewReading() },
+                    onClick = { viewModel.loadAll(token) },
                     modifier = Modifier.fillMaxWidth().height(64.dp),
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
                 ) {
-                    Text("Show Latest Measurement", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Refresh Measurements", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
 
                 // Quick Actions Grid
