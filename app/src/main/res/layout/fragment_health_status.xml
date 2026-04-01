@@ -1,0 +1,512 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_dashboard"
+    android:orientation="vertical">
+
+    <!-- ── Header (glass white) ── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:background="@color/card_background"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="12dp"
+        android:elevation="4dp">
+
+        <FrameLayout
+            android:id="@+id/btnBack"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_badge_normal"
+            android:layout_marginEnd="4dp"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_back"
+                android:tint="@color/primary" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginStart="8dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Health Status"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:letterSpacing="-0.02"
+                android:textColor="@color/text_primary" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Next check-in countdown"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ── Scrollable Content ── -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:overScrollMode="never">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="20dp"
+            android:paddingBottom="32dp">
+
+            <!-- ── Countdown Timer Card ── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="28dp"
+                app:cardElevation="6dp"
+                app:cardBackgroundColor="#FAFBFF"
+                app:strokeColor="#E0E8FF"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:paddingHorizontal="20dp"
+                    android:paddingTop="28dp"
+                    android:paddingBottom="24dp">
+
+                    <!-- Clock icon -->
+                    <FrameLayout
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:background="@drawable/bg_icon_ble_blue"
+                        android:layout_marginBottom="18dp">
+                        <ImageView
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_clock" />
+                    </FrameLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Time Until Check-In"
+                        android:textSize="22sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="-0.02"
+                        android:textColor="@color/text_primary"
+                        android:gravity="center" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:layout_marginBottom="24dp"
+                        android:text="Stay healthy with regular monitoring"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_secondary"
+                        android:gravity="center" />
+
+                    <!-- Countdown 4-tile grid -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <!-- Days -->
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="5dp"
+                            android:orientation="vertical"
+                            android:gravity="center_horizontal"
+                            android:background="@drawable/bg_countdown_tile"
+                            android:paddingVertical="16dp"
+                            android:paddingHorizontal="4dp">
+                            <TextView
+                                android:id="@+id/tvDays"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="02"
+                                android:textSize="36sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/primary"
+                                android:lineSpacingExtra="-2dp" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:text="DAYS"
+                                android:textSize="9sp"
+                                android:textStyle="bold"
+                                android:letterSpacing="0.08"
+                                android:textColor="@color/text_secondary" />
+                        </LinearLayout>
+
+                        <!-- Hours -->
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginHorizontal="5dp"
+                            android:orientation="vertical"
+                            android:gravity="center_horizontal"
+                            android:background="@drawable/bg_countdown_tile"
+                            android:paddingVertical="16dp"
+                            android:paddingHorizontal="4dp">
+                            <TextView
+                                android:id="@+id/tvHours"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="23"
+                                android:textSize="36sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/primary"
+                                android:lineSpacingExtra="-2dp" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:text="HOURS"
+                                android:textSize="9sp"
+                                android:textStyle="bold"
+                                android:letterSpacing="0.08"
+                                android:textColor="@color/text_secondary" />
+                        </LinearLayout>
+
+                        <!-- Mins -->
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginHorizontal="5dp"
+                            android:orientation="vertical"
+                            android:gravity="center_horizontal"
+                            android:background="@drawable/bg_countdown_tile"
+                            android:paddingVertical="16dp"
+                            android:paddingHorizontal="4dp">
+                            <TextView
+                                android:id="@+id/tvMins"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="45"
+                                android:textSize="36sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/primary"
+                                android:lineSpacingExtra="-2dp" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:text="MINS"
+                                android:textSize="9sp"
+                                android:textStyle="bold"
+                                android:letterSpacing="0.08"
+                                android:textColor="@color/text_secondary" />
+                        </LinearLayout>
+
+                        <!-- Secs -->
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="5dp"
+                            android:orientation="vertical"
+                            android:gravity="center_horizontal"
+                            android:background="@drawable/bg_countdown_tile"
+                            android:paddingVertical="16dp"
+                            android:paddingHorizontal="4dp">
+                            <TextView
+                                android:id="@+id/tvSecs"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="30"
+                                android:textSize="36sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/primary"
+                                android:lineSpacingExtra="-2dp" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:text="SECS"
+                                android:textSize="9sp"
+                                android:textStyle="bold"
+                                android:letterSpacing="0.08"
+                                android:textColor="@color/text_secondary" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ── Current Status Card ── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="24dp"
+                app:cardElevation="3dp"
+                app:cardBackgroundColor="@color/card_background"
+                app:strokeColor="#E8EEFF"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <!-- Card header -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="16dp">
+                        <FrameLayout
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:background="@drawable/bg_icon_green"
+                            android:layout_marginEnd="12dp">
+                            <ImageView
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                android:layout_gravity="center"
+                                android:src="@drawable/ic_heart"
+                                android:tint="#FFFFFF" />
+                        </FrameLayout>
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Current Status"
+                                android:textSize="17sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/text_primary" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="All metrics normal"
+                                android:textSize="12sp"
+                                android:textColor="@color/text_secondary" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- Blood Pressure row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:background="@drawable/bg_status_row_green"
+                        android:paddingHorizontal="14dp"
+                        android:layout_marginBottom="8dp">
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Blood Pressure"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+                        <TextView
+                            android:id="@+id/tvBpStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Normal"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/success" />
+                    </LinearLayout>
+
+                    <!-- Heart Rate row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:background="@drawable/bg_status_row_green"
+                        android:paddingHorizontal="14dp"
+                        android:layout_marginBottom="8dp">
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Heart Rate"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+                        <TextView
+                            android:id="@+id/tvHrStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Normal"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/success" />
+                    </LinearLayout>
+
+                    <!-- Oxygen Level row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:background="@drawable/bg_status_row_green"
+                        android:paddingHorizontal="14dp">
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Oxygen Level"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+                        <TextView
+                            android:id="@+id/tvSpo2Status"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Normal"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/success" />
+                    </LinearLayout>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ── Health Tips Card ── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="24dp"
+                app:cardElevation="3dp"
+                app:cardBackgroundColor="@color/card_background"
+                app:strokeColor="#E8EEFF"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <!-- Card header -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="18dp">
+                        <FrameLayout
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:background="@drawable/bg_icon_ble_blue"
+                            android:layout_marginEnd="12dp">
+                            <ImageView
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                android:layout_gravity="center"
+                                android:src="@drawable/ic_shield" />
+                        </FrameLayout>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Health Tips"
+                            android:textSize="17sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+                    </LinearLayout>
+
+                    <!-- Tip 1 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="14dp">
+                        <View
+                            android:layout_width="8dp"
+                            android:layout_height="8dp"
+                            android:background="@drawable/bg_blue_dot"
+                            android:layout_marginTop="5dp"
+                            android:layout_marginEnd="12dp" />
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Regular monitoring helps detect health issues early"
+                            android:textSize="13sp"
+                            android:lineSpacingMultiplier="1.4"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+
+                    <!-- Tip 2 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="14dp">
+                        <View
+                            android:layout_width="8dp"
+                            android:layout_height="8dp"
+                            android:background="@drawable/bg_blue_dot"
+                            android:layout_marginTop="5dp"
+                            android:layout_marginEnd="12dp" />
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Maintain a balanced diet and exercise routine"
+                            android:textSize="13sp"
+                            android:lineSpacingMultiplier="1.4"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+
+                    <!-- Tip 3 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+                        <View
+                            android:layout_width="8dp"
+                            android:layout_height="8dp"
+                            android:background="@drawable/bg_blue_dot"
+                            android:layout_marginTop="5dp"
+                            android:layout_marginEnd="12dp" />
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Stay hydrated and get adequate sleep"
+                            android:textSize="13sp"
+                            android:lineSpacingMultiplier="1.4"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

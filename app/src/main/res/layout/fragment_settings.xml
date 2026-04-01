@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_dashboard"
+    android:orientation="vertical">
+
+    <!-- ── Glass Header ── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/card_background"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="14dp"
+        android:elevation="3dp"
+        android:outlineProvider="bounds">
+
+        <FrameLayout
+            android:id="@+id/btnBack"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/bg_icon_light_indigo"
+            android:layout_marginEnd="12dp"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_back"
+                android:tint="@color/primary" />
+        </FrameLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Settings"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:letterSpacing="-0.02"
+            android:textColor="@color/text_primary" />
+    </LinearLayout>
+
+    <!-- ── Scrollable Content ── -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:overScrollMode="never">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="16dp"
+            android:paddingBottom="40dp">
+
+            <!-- ── Notifications Card ── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="28dp"
+                app:cardElevation="4dp"
+                app:cardBackgroundColor="@color/card_background"
+                app:strokeColor="#DBEAFE"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="22dp">
+
+                    <!-- Section header -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="16dp">
+                        <FrameLayout android:layout_width="44dp" android:layout_height="44dp" android:background="@drawable/bg_icon_ble_blue" android:layout_marginEnd="12dp">
+                            <ImageView android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="center" android:src="@drawable/ic_bell" />
+                        </FrameLayout>
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Notifications" android:textSize="16sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                    </LinearLayout>
+
+                    <!-- Push Notifications toggle row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:background="@drawable/bg_settings_toggle_row"
+                        android:paddingHorizontal="16dp"
+                        android:paddingVertical="14dp"
+                        android:layout_marginBottom="10dp">
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Push Notifications"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchPushNotifications"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:checked="true" />
+                    </LinearLayout>
+
+                    <!-- Weekly Reports toggle row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:background="@drawable/bg_settings_toggle_row"
+                        android:paddingHorizontal="16dp"
+                        android:paddingVertical="14dp">
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Weekly Reports"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchWeeklyReports"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:checked="false" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ── Language Card ── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="28dp"
+                app:cardElevation="4dp"
+                app:cardBackgroundColor="@color/card_background"
+                app:strokeColor="#EDE9FE"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="22dp">
+
+                    <!-- Section header -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="16dp">
+                        <FrameLayout android:layout_width="44dp" android:layout_height="44dp" android:background="@drawable/bg_icon_purple" android:layout_marginEnd="12dp">
+                            <ImageView android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="center" android:src="@drawable/ic_globe" />
+                        </FrameLayout>
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Language" android:textSize="16sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                    </LinearLayout>
+
+                    <!-- Language Spinner row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:background="@drawable/bg_settings_toggle_row"
+                        android:paddingHorizontal="16dp"
+                        android:paddingVertical="4dp">
+                        <Spinner
+                            android:id="@+id/spinnerLanguage"
+                            android:layout_width="0dp"
+                            android:layout_height="52dp"
+                            android:layout_weight="1"
+                            android:background="@null"
+                            android:spinnerMode="dropdown" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ── Privacy Policy link ── -->
+            <LinearLayout
+                android:id="@+id/btnPrivacyPolicy"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_field_row"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="14dp"
+                android:layout_marginBottom="12dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:elevation="3dp"
+                android:outlineProvider="bounds">
+
+                <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/bg_icon_green" android:layout_marginEnd="14dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/ic_shield" />
+                </FrameLayout>
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Privacy Policy" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_chevron_right" android:tint="@color/text_hint" />
+            </LinearLayout>
+
+            <!-- ── Terms of Service link ── -->
+            <LinearLayout
+                android:id="@+id/btnTerms"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_field_row"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="14dp"
+                android:layout_marginBottom="12dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:elevation="3dp"
+                android:outlineProvider="bounds">
+
+                <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/bg_icon_amber" android:layout_marginEnd="14dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/ic_file_text" />
+                </FrameLayout>
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Terms of Service" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_chevron_right" android:tint="@color/text_hint" />
+            </LinearLayout>
+
+            <!-- ── About BP Sync link ── -->
+            <LinearLayout
+                android:id="@+id/btnHelpSupport"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_field_row"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="14dp"
+                android:layout_marginBottom="28dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:elevation="3dp"
+                android:outlineProvider="bounds">
+
+                <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/bg_icon_cyan" android:layout_marginEnd="14dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/ic_info" />
+                </FrameLayout>
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="About BP Sync" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_chevron_right" android:tint="@color/text_hint" />
+            </LinearLayout>
+
+            <!-- ── Version ── -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:text="BP Sync Version 1.0.0"
+                android:textSize="12sp"
+                android:textColor="@color/text_hint" />
+
+            <!-- ── Hidden compat views ── -->
+            <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchMeasurementAlerts" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+            <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchAutoSync" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+            <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchPrivacyMode" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+            <LinearLayout android:id="@+id/themeLightBtn" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:orientation="vertical" />
+            <LinearLayout android:id="@+id/themeDarkBtn" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:orientation="vertical" />
+            <LinearLayout android:id="@+id/btnManageDevices" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:orientation="horizontal" />
+            <LinearLayout android:id="@+id/btnChangePassword" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:orientation="horizontal" />
+            <LinearLayout android:id="@+id/btnDataPrivacy" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:orientation="horizontal" />
+
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

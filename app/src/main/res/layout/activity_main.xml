@@ -1,0 +1,473 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_dashboard">
+
+    <!-- ══════════════ LOGIN VIEW ══════════════ -->
+    <ScrollView
+        android:id="@+id/viewLogin"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:overScrollMode="never">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="24dp"
+            android:paddingTop="48dp"
+            android:paddingBottom="32dp">
+
+            <!-- ── Logo Section ── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:layout_marginBottom="44dp">
+
+                <FrameLayout
+                    android:layout_width="80dp"
+                    android:layout_height="80dp"
+                    android:background="@drawable/bg_logo_blue_gradient"
+                    android:elevation="8dp"
+                    android:outlineProvider="bounds"
+                    android:layout_marginBottom="18dp">
+                    <ImageView
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_heart"
+                        android:tint="#FFFFFF" />
+                </FrameLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="BP Sync"
+                    android:textSize="32sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="-0.02"
+                    android:textColor="@color/text_primary" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Health Monitoring System"
+                    android:textSize="15sp"
+                    android:textColor="@color/text_secondary" />
+            </LinearLayout>
+
+            <!-- ── Email Input Card ── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_input_glass"
+                android:paddingHorizontal="14dp"
+                android:elevation="3dp"
+                android:outlineProvider="background"
+                android:layout_marginBottom="14dp">
+
+                <FrameLayout
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/bg_input_icon_bg"
+                    android:layout_marginEnd="12dp">
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_email"
+                        android:tint="@color/primary" />
+                </FrameLayout>
+
+                <EditText
+                    android:id="@+id/etEmail"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@null"
+                    android:hint="Email Address"
+                    android:inputType="textEmailAddress"
+                    android:maxLines="1"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_hint" />
+            </LinearLayout>
+
+            <!-- ── Password Input Card ── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_input_glass"
+                android:paddingHorizontal="14dp"
+                android:elevation="3dp"
+                android:outlineProvider="background">
+
+                <FrameLayout
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/bg_input_icon_bg"
+                    android:layout_marginEnd="12dp">
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_lock"
+                        android:tint="@color/primary" />
+                </FrameLayout>
+
+                <EditText
+                    android:id="@+id/etPassword"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@null"
+                    android:hint="Password"
+                    android:inputType="textPassword"
+                    android:maxLines="1"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_hint" />
+            </LinearLayout>
+
+            <!-- ── Sign In Button ── -->
+            <Button
+                android:id="@+id/btnLogin"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/bg_btn_primary"
+                android:text="Sign In"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:stateListAnimator="@null"
+                android:elevation="6dp" />
+
+            <!-- ── Status / Error text ── -->
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textSize="13sp"
+                android:textColor="@color/error"
+                android:gravity="center"
+                android:visibility="gone" />
+
+            <!-- ── Register Link ── -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="22dp"
+                android:orientation="horizontal">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Don't have an account? "
+                    android:textSize="14sp"
+                    android:textColor="@color/text_secondary" />
+                <TextView
+                    android:id="@+id/tvGoRegister"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Register"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/primary" />
+            </LinearLayout>
+
+            <!-- ── Demo Button ── -->
+            <Button
+                android:id="@+id/btnDemo"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="4dp"
+                android:text="Continue as Demo"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <!-- ── Footer ── -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="28dp"
+                android:text="Medical Device Certified • HIPAA Compliant"
+                android:textSize="12sp"
+                android:textColor="@color/text_hint" />
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- ══════════════ REGISTER VIEW ══════════════ -->
+    <ScrollView
+        android:id="@+id/viewRegister"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="false"
+        android:overScrollMode="never"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:paddingHorizontal="24dp"
+            android:paddingTop="48dp"
+            android:paddingBottom="40dp">
+
+            <!-- ── Logo Section ── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:layout_marginBottom="36dp">
+
+                <FrameLayout
+                    android:layout_width="80dp"
+                    android:layout_height="80dp"
+                    android:background="@drawable/bg_logo_blue_gradient"
+                    android:elevation="8dp"
+                    android:outlineProvider="bounds"
+                    android:layout_marginBottom="18dp">
+                    <ImageView
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_heart"
+                        android:tint="#FFFFFF" />
+                </FrameLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Create Account"
+                    android:textSize="28sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="-0.02"
+                    android:textColor="@color/text_primary" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Join BP Sync today"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_secondary" />
+            </LinearLayout>
+
+            <!-- ── Full Name ── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_input_glass"
+                android:paddingHorizontal="14dp"
+                android:elevation="3dp"
+                android:outlineProvider="background"
+                android:layout_marginBottom="14dp">
+                <FrameLayout android:layout_width="44dp" android:layout_height="44dp" android:background="@drawable/bg_input_icon_bg" android:layout_marginEnd="12dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/ic_person" android:tint="@color/primary" />
+                </FrameLayout>
+                <EditText android:id="@+id/etRegName" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="@null" android:hint="Full Name" android:inputType="textPersonName" android:maxLines="1" android:textSize="15sp" android:textStyle="bold" android:textColor="@color/text_primary" android:textColorHint="@color/text_hint" />
+            </LinearLayout>
+
+            <!-- ── Email ── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_input_glass"
+                android:paddingHorizontal="14dp"
+                android:elevation="3dp"
+                android:outlineProvider="background"
+                android:layout_marginBottom="14dp">
+                <FrameLayout android:layout_width="44dp" android:layout_height="44dp" android:background="@drawable/bg_input_icon_bg" android:layout_marginEnd="12dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/ic_email" android:tint="@color/primary" />
+                </FrameLayout>
+                <EditText android:id="@+id/etRegEmail" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="@null" android:hint="Email Address" android:inputType="textEmailAddress" android:maxLines="1" android:textSize="15sp" android:textStyle="bold" android:textColor="@color/text_primary" android:textColorHint="@color/text_hint" />
+            </LinearLayout>
+
+            <!-- ── Password ── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_input_glass"
+                android:paddingHorizontal="14dp"
+                android:elevation="3dp"
+                android:outlineProvider="background"
+                android:layout_marginBottom="14dp">
+                <FrameLayout android:layout_width="44dp" android:layout_height="44dp" android:background="@drawable/bg_input_icon_bg" android:layout_marginEnd="12dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/ic_lock" android:tint="@color/primary" />
+                </FrameLayout>
+                <EditText android:id="@+id/etRegPassword" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="@null" android:hint="Password (min. 6 characters)" android:inputType="textPassword" android:maxLines="1" android:textSize="15sp" android:textStyle="bold" android:textColor="@color/text_primary" android:textColorHint="@color/text_hint" />
+            </LinearLayout>
+
+            <!-- ── Date of Birth (tappable → DatePickerDialog) ── -->
+            <LinearLayout
+                android:id="@+id/layoutRegBirthDate"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_input_glass"
+                android:paddingHorizontal="14dp"
+                android:elevation="3dp"
+                android:outlineProvider="background"
+                android:layout_marginBottom="14dp"
+                android:clickable="true"
+                android:focusable="true">
+                <FrameLayout android:layout_width="44dp" android:layout_height="44dp" android:background="@drawable/bg_input_icon_bg" android:layout_marginEnd="12dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/ic_calendar" android:tint="@color/primary" />
+                </FrameLayout>
+                <TextView
+                    android:id="@+id/tvRegBirthDate"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Date of Birth"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_hint" />
+            </LinearLayout>
+
+            <!-- ── Weight + Height row ── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="14dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_input_glass_sm"
+                    android:paddingHorizontal="12dp"
+                    android:elevation="2dp"
+                    android:outlineProvider="background">
+                    <FrameLayout android:layout_width="36dp" android:layout_height="36dp" android:background="@drawable/bg_input_icon_bg" android:layout_marginEnd="10dp">
+                        <ImageView android:layout_width="18dp" android:layout_height="18dp" android:layout_gravity="center" android:src="@drawable/ic_weight" android:tint="@color/primary" />
+                    </FrameLayout>
+                    <EditText android:id="@+id/etRegWeight" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="@null" android:hint="Weight (kg)" android:inputType="numberDecimal" android:maxLines="1" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" android:textColorHint="@color/text_hint" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_input_glass_sm"
+                    android:paddingHorizontal="12dp"
+                    android:elevation="2dp"
+                    android:outlineProvider="background">
+                    <FrameLayout android:layout_width="36dp" android:layout_height="36dp" android:background="@drawable/bg_input_icon_bg" android:layout_marginEnd="10dp">
+                        <ImageView android:layout_width="18dp" android:layout_height="18dp" android:layout_gravity="center" android:src="@drawable/ic_ruler" android:tint="@color/primary" />
+                    </FrameLayout>
+                    <EditText android:id="@+id/etRegHeight" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="@null" android:hint="Height (cm)" android:inputType="number" android:maxLines="1" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" android:textColorHint="@color/text_hint" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- ── Gender (full-width) ── -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_input_glass"
+                android:paddingHorizontal="14dp"
+                android:elevation="3dp"
+                android:outlineProvider="background"
+                android:layout_marginBottom="28dp">
+                <FrameLayout android:layout_width="44dp" android:layout_height="44dp" android:background="@drawable/bg_input_icon_bg" android:layout_marginEnd="12dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/ic_person" android:tint="@color/primary" />
+                </FrameLayout>
+                <Spinner
+                    android:id="@+id/spinnerGender"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@null"
+                    android:spinnerMode="dropdown" />
+            </LinearLayout>
+
+            <!-- ── Create Account button ── -->
+            <Button
+                android:id="@+id/btnRegister"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_btn_primary"
+                android:text="Create Account"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:stateListAnimator="@null"
+                android:elevation="6dp" />
+
+            <!-- ── Status / Error text ── -->
+            <TextView
+                android:id="@+id/tvRegStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textSize="13sp"
+                android:textColor="@color/error"
+                android:gravity="center"
+                android:visibility="gone" />
+
+            <!-- ── Sign In link ── -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="18dp"
+                android:orientation="horizontal">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Already have an account? "
+                    android:textSize="14sp"
+                    android:textColor="@color/text_secondary" />
+                <TextView
+                    android:id="@+id/tvGoLogin"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Sign In"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/primary" />
+            </LinearLayout>
+
+            <!-- Hidden compat: etRegAge -->
+            <EditText android:id="@+id/etRegAge" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" android:inputType="number" />
+
+        </LinearLayout>
+    </ScrollView>
+
+</FrameLayout>

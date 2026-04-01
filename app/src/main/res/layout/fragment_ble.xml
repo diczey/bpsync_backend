@@ -1,0 +1,484 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_dashboard"
+    android:orientation="vertical">
+
+    <!-- ── Header (glass white) ── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:background="@color/card_background"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="12dp"
+        android:elevation="4dp">
+
+        <ImageView
+            android:id="@+id/btnBack"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_back"
+            android:tint="@color/primary"
+            android:padding="8dp"
+            android:background="@drawable/bg_badge_normal"
+            android:layout_marginEnd="4dp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginStart="8dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="BLE Connection"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:letterSpacing="-0.02"
+                android:textColor="@color/text_primary" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Connect your device"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ── Scrollable Content ── -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:overScrollMode="never">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="20dp"
+            android:paddingBottom="32dp">
+
+            <!-- ── Connection Status Card ── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="28dp"
+                app:cardElevation="6dp"
+                app:cardBackgroundColor="#FAFBFF"
+                app:strokeColor="#E0E8FF"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:padding="32dp">
+
+                    <!-- BLE Icon + connected dot overlay -->
+                    <FrameLayout
+                        android:layout_width="80dp"
+                        android:layout_height="80dp"
+                        android:layout_marginBottom="20dp">
+
+                        <FrameLayout
+                            android:id="@+id/frmBleIcon"
+                            android:layout_width="80dp"
+                            android:layout_height="80dp"
+                            android:background="@drawable/bg_ble_status_idle">
+                            <ImageView
+                                android:id="@+id/ivBleIcon"
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:layout_gravity="center"
+                                android:src="@drawable/ic_ble"
+                                android:tint="#9CA3AF" />
+                        </FrameLayout>
+
+                        <!-- Connected dot -->
+                        <FrameLayout
+                            android:id="@+id/frmConnectedDot"
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_gravity="top|end"
+                            android:background="@drawable/bg_ble_status_connected"
+                            android:visibility="gone">
+                            <ImageView
+                                android:layout_width="12dp"
+                                android:layout_height="12dp"
+                                android:layout_gravity="center"
+                                android:src="@drawable/ic_check" />
+                        </FrameLayout>
+                    </FrameLayout>
+
+                    <!-- Status Title -->
+                    <TextView
+                        android:id="@+id/tvBleStatusTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="No Device Connected"
+                        android:textSize="22sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary"
+                        android:gravity="center" />
+
+                    <!-- Status Description -->
+                    <TextView
+                        android:id="@+id/tvBleStatusDesc"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="28dp"
+                        android:text="Press scan to find devices"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_secondary"
+                        android:gravity="center" />
+
+                    <!-- Scan Button (visible when not connected) -->
+                    <Button
+                        android:id="@+id/btnScan"
+                        android:layout_width="match_parent"
+                        android:layout_height="56dp"
+                        android:background="@drawable/bg_btn_primary"
+                        android:text="Scan for Devices"
+                        android:textColor="#FFFFFF"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:stateListAnimator="@null"
+                        android:elevation="4dp"
+                        android:drawableStart="@drawable/ic_ble"
+                        android:drawableTint="#FFFFFF"
+                        android:drawablePadding="10dp" />
+
+                    <!-- Go to Dashboard Button (hidden initially) -->
+                    <Button
+                        android:id="@+id/btnGoToDashboard"
+                        android:layout_width="match_parent"
+                        android:layout_height="56dp"
+                        android:layout_marginTop="0dp"
+                        android:background="@drawable/bg_btn_primary"
+                        android:text="Go to Dashboard"
+                        android:textColor="#FFFFFF"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:stateListAnimator="@null"
+                        android:elevation="4dp"
+                        android:visibility="gone" />
+
+                    <!-- Disconnect Button (hidden initially) -->
+                    <Button
+                        android:id="@+id/btnDisconnect"
+                        android:layout_width="match_parent"
+                        android:layout_height="56dp"
+                        android:layout_marginTop="12dp"
+                        android:background="@drawable/bg_btn_disconnect"
+                        android:text="Disconnect Device"
+                        android:textColor="#DC2626"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:stateListAnimator="@null"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ── Available Devices Card (hidden initially) ── -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardDevices"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="24dp"
+                app:cardElevation="3dp"
+                app:cardBackgroundColor="@color/card_background"
+                app:strokeColor="#E8EEFF"
+                app:strokeWidth="1dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <!-- Card header -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="16dp">
+                        <TextView
+                            android:id="@+id/tvDevicesTitle"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Searching Devices..."
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+                        <ImageView
+                            android:id="@+id/btnRescan"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:src="@drawable/ic_refresh"
+                            android:padding="6dp"
+                            android:background="@drawable/bg_primary_light_circle"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <!-- Skeleton loaders (visible during scan) -->
+                    <LinearLayout
+                        android:id="@+id/layoutSkeletons"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="visible">
+
+                        <!-- Skeleton 1 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="72dp"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_device_item"
+                            android:padding="12dp"
+                            android:layout_marginBottom="10dp">
+                            <View
+                                android:layout_width="48dp"
+                                android:layout_height="48dp"
+                                android:background="@drawable/bg_skeleton_icon"
+                                android:layout_marginEnd="14dp" />
+                            <LinearLayout
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical">
+                                <View android:layout_width="120dp" android:layout_height="14dp" android:background="@drawable/bg_skeleton" android:layout_marginBottom="8dp" />
+                                <View android:layout_width="80dp" android:layout_height="10dp" android:background="@drawable/bg_skeleton" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <!-- Skeleton 2 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="72dp"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_device_item"
+                            android:padding="12dp"
+                            android:layout_marginBottom="10dp">
+                            <View
+                                android:layout_width="48dp"
+                                android:layout_height="48dp"
+                                android:background="@drawable/bg_skeleton_icon"
+                                android:layout_marginEnd="14dp" />
+                            <LinearLayout
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical">
+                                <View android:layout_width="100dp" android:layout_height="14dp" android:background="@drawable/bg_skeleton" android:layout_marginBottom="8dp" />
+                                <View android:layout_width="70dp" android:layout_height="10dp" android:background="@drawable/bg_skeleton" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <!-- Skeleton 3 -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="72dp"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_device_item"
+                            android:padding="12dp">
+                            <View
+                                android:layout_width="48dp"
+                                android:layout_height="48dp"
+                                android:background="@drawable/bg_skeleton_icon"
+                                android:layout_marginEnd="14dp" />
+                            <LinearLayout
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical">
+                                <View android:layout_width="110dp" android:layout_height="14dp" android:background="@drawable/bg_skeleton" android:layout_marginBottom="8dp" />
+                                <View android:layout_width="90dp" android:layout_height="10dp" android:background="@drawable/bg_skeleton" />
+                            </LinearLayout>
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- Actual device list (hidden during scan) -->
+                    <LinearLayout
+                        android:id="@+id/layoutDeviceList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <!-- Device 1: BP Monitor Pro -->
+                        <LinearLayout
+                            android:id="@+id/layoutDevice1"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_device_item"
+                            android:padding="14dp"
+                            android:layout_marginBottom="10dp"
+                            android:clickable="true"
+                            android:focusable="true">
+                            <FrameLayout
+                                android:id="@+id/frmDevice1Icon"
+                                android:layout_width="48dp"
+                                android:layout_height="48dp"
+                                android:background="@drawable/bg_icon_ble_blue"
+                                android:layout_marginEnd="14dp">
+                                <ImageView android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center" android:src="@drawable/ic_ble" android:tint="#FFFFFF" />
+                            </FrameLayout>
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="BP Monitor Pro" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="4dp">
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Signal 95%" android:textSize="11sp" android:textColor="@color/text_secondary" />
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text=" • " android:textSize="11sp" android:textColor="@color/text_hint" />
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Bat 85%" android:textSize="11sp" android:textColor="@color/text_secondary" />
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text=" • 0.5m" android:textSize="11sp" android:textColor="@color/text_secondary" />
+                                </LinearLayout>
+                            </LinearLayout>
+                            <TextView android:id="@+id/tvConnecting1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Connecting..." android:textSize="12sp" android:textStyle="bold" android:textColor="@color/success" android:visibility="gone" />
+                        </LinearLayout>
+
+                        <!-- Device 2: BP Sync Device -->
+                        <LinearLayout
+                            android:id="@+id/layoutDevice2"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_device_item"
+                            android:padding="14dp"
+                            android:layout_marginBottom="10dp"
+                            android:clickable="true"
+                            android:focusable="true">
+                            <FrameLayout
+                                android:id="@+id/frmDevice2Icon"
+                                android:layout_width="48dp"
+                                android:layout_height="48dp"
+                                android:background="@drawable/bg_icon_ble_blue"
+                                android:layout_marginEnd="14dp">
+                                <ImageView android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center" android:src="@drawable/ic_ble" android:tint="#FFFFFF" />
+                            </FrameLayout>
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="BP Sync Device" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="4dp">
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Signal 82%" android:textSize="11sp" android:textColor="@color/text_secondary" />
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text=" • " android:textSize="11sp" android:textColor="@color/text_hint" />
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Bat 72%" android:textSize="11sp" android:textColor="@color/text_secondary" />
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text=" • 1.2m" android:textSize="11sp" android:textColor="@color/text_secondary" />
+                                </LinearLayout>
+                            </LinearLayout>
+                            <TextView android:id="@+id/tvConnecting2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Connecting..." android:textSize="12sp" android:textStyle="bold" android:textColor="@color/success" android:visibility="gone" />
+                        </LinearLayout>
+
+                        <!-- Device 3: Health Band Plus -->
+                        <LinearLayout
+                            android:id="@+id/layoutDevice3"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:background="@drawable/bg_device_item"
+                            android:padding="14dp"
+                            android:clickable="true"
+                            android:focusable="true">
+                            <FrameLayout
+                                android:id="@+id/frmDevice3Icon"
+                                android:layout_width="48dp"
+                                android:layout_height="48dp"
+                                android:background="@drawable/bg_icon_ble_blue"
+                                android:layout_marginEnd="14dp">
+                                <ImageView android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center" android:src="@drawable/ic_ble" android:tint="#FFFFFF" />
+                            </FrameLayout>
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Health Band Plus" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="4dp">
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Signal 68%" android:textSize="11sp" android:textColor="@color/text_secondary" />
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text=" • " android:textSize="11sp" android:textColor="@color/text_hint" />
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Bat 91%" android:textSize="11sp" android:textColor="@color/text_secondary" />
+                                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text=" • 2.8m" android:textSize="11sp" android:textColor="@color/text_secondary" />
+                                </LinearLayout>
+                            </LinearLayout>
+                            <TextView android:id="@+id/tvConnecting3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Connecting..." android:textSize="12sp" android:textStyle="bold" android:textColor="@color/success" android:visibility="gone" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ── Connection Tips Card ── -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="24dp"
+                app:cardElevation="3dp"
+                app:cardBackgroundColor="@color/card_background"
+                app:strokeColor="#E8EEFF"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="16dp"
+                        android:text="Connection Tips"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary" />
+
+                    <!-- Tip 1 -->
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="16dp">
+                        <FrameLayout android:layout_width="36dp" android:layout_height="36dp" android:background="@drawable/bg_icon_ble_blue" android:layout_marginEnd="14dp" android:layout_marginTop="2dp">
+                            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:layout_gravity="center" android:src="@drawable/ic_check" />
+                        </FrameLayout>
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Power On Device" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="Make sure your device is powered on" android:textSize="12sp" android:textColor="@color/text_secondary" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- Tip 2 -->
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="16dp">
+                        <FrameLayout android:layout_width="36dp" android:layout_height="36dp" android:background="@drawable/bg_icon_ble_blue" android:layout_marginEnd="14dp" android:layout_marginTop="2dp">
+                            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:layout_gravity="center" android:src="@drawable/ic_check" />
+                        </FrameLayout>
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Enable Bluetooth" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="Ensure Bluetooth is enabled on your phone" android:textSize="12sp" android:textColor="@color/text_secondary" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- Tip 3 -->
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                        <FrameLayout android:layout_width="36dp" android:layout_height="36dp" android:background="@drawable/bg_icon_ble_blue" android:layout_marginEnd="14dp" android:layout_marginTop="2dp">
+                            <ImageView android:layout_width="18dp" android:layout_height="18dp" android:layout_gravity="center" android:src="@drawable/ic_check" />
+                        </FrameLayout>
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stay Close" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/text_primary" />
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="Keep device within 10 meters" android:textSize="12sp" android:textColor="@color/text_secondary" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>
