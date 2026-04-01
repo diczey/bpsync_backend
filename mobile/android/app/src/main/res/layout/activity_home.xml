@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.drawerlayout.widget.DrawerLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/drawerLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Main content -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- Toolbar (hidden — each fragment provides its own header) -->
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:visibility="gone"
+            android:background="@drawable/bg_gradient_primary">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_gravity="center">
+                <TextView
+                    android:id="@+id/tvToolbarTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="BP Sync"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="#FFFFFF" />
+            </LinearLayout>
+
+        </androidx.appcompat.widget.Toolbar>
+
+        <!-- Fragment container fills full screen -->
+        <FrameLayout
+            android:id="@+id/fragment_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/bg_screen" />
+
+    </LinearLayout>
+
+    <!-- Navigation Drawer — Premium Glass Design -->
+    <LinearLayout
+        android:id="@+id/navDrawer"
+        android:layout_width="280dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:background="@color/card_background"
+        android:orientation="vertical"
+        android:elevation="16dp">
+
+        <!-- Header (Menu title + user card) -->
+        <include layout="@layout/nav_header" />
+
+        <!-- Nav items (scrollable) -->
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="12dp">
+
+                <!-- Dashboard -->
+                <LinearLayout
+                    android:id="@+id/navItemDashboard"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:background="@drawable/bg_nav_item_selected"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:layout_marginVertical="2dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_dashboard" android:tint="#FFFFFF" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:text="Dashboard" android:textSize="14sp" android:textStyle="bold" android:textColor="#FFFFFF" />
+                </LinearLayout>
+
+                <!-- Health Status -->
+                <LinearLayout
+                    android:id="@+id/navItemHealthStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:layout_marginVertical="2dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_shield" android:tint="@color/text_secondary" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:text="Health Status" android:textSize="14sp" android:textColor="@color/drawer_item_text" />
+                </LinearLayout>
+
+                <!-- Trends -->
+                <LinearLayout
+                    android:id="@+id/navItemTrends"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:layout_marginVertical="2dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_trends" android:tint="@color/text_secondary" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:text="Trends" android:textSize="14sp" android:textColor="@color/drawer_item_text" />
+                </LinearLayout>
+
+                <!-- Blood Pressure -->
+                <LinearLayout
+                    android:id="@+id/navItemBloodPressure"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:layout_marginVertical="2dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_heart" android:tint="@color/text_secondary" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:text="Blood Pressure" android:textSize="14sp" android:textColor="@color/drawer_item_text" />
+                </LinearLayout>
+
+                <!-- Heart Rate / ECG -->
+                <LinearLayout
+                    android:id="@+id/navItemPulse"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:layout_marginVertical="2dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_pulse" android:tint="@color/text_secondary" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:text="Heart Rate/ECG" android:textSize="14sp" android:textColor="@color/drawer_item_text" />
+                </LinearLayout>
+
+                <!-- PPG -->
+                <LinearLayout
+                    android:id="@+id/navItemPpg"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:layout_marginVertical="2dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_ppg" android:tint="@color/text_secondary" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:text="PPG" android:textSize="14sp" android:textColor="@color/drawer_item_text" />
+                </LinearLayout>
+
+                <!-- Measurements -->
+                <LinearLayout
+                    android:id="@+id/navItemMeasurements"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:layout_marginVertical="2dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_measurements" android:tint="@color/text_secondary" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:text="Measurements" android:textSize="14sp" android:textColor="@color/drawer_item_text" />
+                </LinearLayout>
+
+                <!-- Profile -->
+                <LinearLayout
+                    android:id="@+id/navItemProfile"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:layout_marginVertical="2dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_profile" android:tint="@color/text_secondary" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:text="Profile" android:textSize="14sp" android:textColor="@color/drawer_item_text" />
+                </LinearLayout>
+
+                <!-- BLE Connection -->
+                <LinearLayout
+                    android:id="@+id/navItemBle"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:layout_marginVertical="2dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_ble" android:tint="@color/text_secondary" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:text="BLE Connection" android:textSize="14sp" android:textColor="@color/drawer_item_text" />
+                </LinearLayout>
+
+                <!-- Settings -->
+                <LinearLayout
+                    android:id="@+id/navItemSettings"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:layout_marginVertical="2dp">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_settings" android:tint="@color/text_secondary" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:text="Settings" android:textSize="14sp" android:textColor="@color/drawer_item_text" />
+                </LinearLayout>
+
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- Thin divider above logout -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#F0F4FF"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp" />
+
+        <!-- Logout button -->
+        <LinearLayout
+            android:id="@+id/navItemLogout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_nav_logout"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="14dp"
+            android:layout_margin="12dp">
+            <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_logout" android:tint="#DC2626" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:text="Logout" android:textSize="14sp" android:textStyle="bold" android:textColor="#DC2626" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.drawerlayout.widget.DrawerLayout>

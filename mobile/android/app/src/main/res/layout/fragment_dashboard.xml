@@ -1,0 +1,724 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_dashboard"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingBottom="32dp">
+
+        <!-- ── Header ── -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="20dp"
+            android:paddingTop="24dp"
+            android:paddingBottom="8dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="BP Sync"
+                    android:textSize="26sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="-0.02"
+                    android:textColor="@color/text_primary" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Health Monitoring"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_secondary" />
+            </LinearLayout>
+
+            <!-- Hamburger menu button -->
+            <ImageView
+                android:id="@+id/btnMenu"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:src="@drawable/ic_menu"
+                android:tint="@color/primary"
+                android:padding="10dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:focusable="true" />
+        </LinearLayout>
+
+        <!-- ── BLE Status Card ── -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardBleDevice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            app:cardCornerRadius="22dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/card_background"
+            app:strokeColor="#E8EEFF"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:padding="16dp">
+
+                <!-- BLE icon with connected dot -->
+                <FrameLayout
+                    android:layout_width="48dp"
+                    android:layout_height="48dp">
+                    <FrameLayout
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:background="@drawable/bg_icon_ble_blue">
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_ble"
+                            android:tint="#FFFFFF" />
+                    </FrameLayout>
+                    <!-- Connected status dot -->
+                    <View
+                        android:id="@+id/viewBleDot"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="top|end"
+                        android:background="@drawable/bg_ble_connected_dot"
+                        android:outlineProvider="bounds"
+                        android:elevation="2dp" />
+                </FrameLayout>
+
+                <!-- Device info -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="14dp"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="BP Monitor Pro"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary" />
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="3dp">
+                        <View
+                            android:layout_width="7dp"
+                            android:layout_height="7dp"
+                            android:background="@drawable/bg_dot_green"
+                            android:layout_marginEnd="5dp" />
+                        <TextView
+                            android:id="@+id/tvBleStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Connected"
+                            android:textSize="12sp"
+                            android:textColor="@color/text_secondary" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text=" • "
+                            android:textSize="12sp"
+                            android:textColor="@color/text_hint" />
+                        <TextView
+                            android:id="@+id/tvBleBattery"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="85%"
+                            android:textSize="12sp"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Manage button -->
+                <Button
+                    android:id="@+id/btnManageBle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:background="@drawable/bg_btn_manage"
+                    android:text="Manage"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:paddingHorizontal="18dp"
+                    android:stateListAnimator="@null" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ── Blood Pressure Card ── -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="14dp"
+            app:cardCornerRadius="28dp"
+            app:cardElevation="6dp"
+            app:cardBackgroundColor="#FAFBFF"
+            app:strokeColor="#E0E8FF"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <!-- Card header -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <FrameLayout
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_icon_bp_red">
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_heart"
+                            android:tint="#FFFFFF" />
+                    </FrameLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="12dp"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Blood Pressure"
+                            android:textSize="17sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Latest Reading"
+                            android:textSize="12sp"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvBpDetails"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Details"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/primary" />
+                </LinearLayout>
+
+                <!-- Big BP Numbers -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:layout_marginTop="24dp"
+                    android:layout_marginBottom="8dp">
+
+                    <!-- Systolic -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:gravity="center_horizontal">
+                        <TextView
+                            android:id="@+id/tvLatestSystolic"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="120"
+                            android:textSize="56sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/primary"
+                            android:letterSpacing="-0.03"
+                            android:lineSpacingExtra="-4dp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="SYSTOLIC"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="0.08"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginHorizontal="16dp"
+                        android:layout_marginBottom="18dp"
+                        android:text="/"
+                        android:textSize="36sp"
+                        android:textColor="@color/text_hint" />
+
+                    <!-- Diastolic -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:gravity="center_horizontal">
+                        <TextView
+                            android:id="@+id/tvLatestDiastolic"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="80"
+                            android:textSize="56sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/primary"
+                            android:letterSpacing="-0.03"
+                            android:lineSpacingExtra="-4dp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="DIASTOLIC"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="0.08"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Divider line -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="#E5E7EB"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="14dp" />
+
+                <!-- Pulse + SpO2 row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:src="@drawable/ic_heart"
+                            android:tint="@color/icon_bp"
+                            android:layout_marginEnd="6dp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Pulse: "
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary" />
+                        <TextView
+                            android:id="@+id/tvLatestHeartRate"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="72"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text=" bpm"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:src="@drawable/ic_ppg"
+                            android:tint="@color/primary"
+                            android:layout_marginEnd="6dp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="SpO2: "
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary" />
+                        <TextView
+                            android:id="@+id/tvSpO2"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="98%"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Health Status badge row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="10dp">
+                    <TextView
+                        android:id="@+id/tvLastUpdated"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="2 hours ago"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_hint" />
+                    <TextView
+                        android:id="@+id/tvHealthStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_badge_normal"
+                        android:paddingHorizontal="14dp"
+                        android:paddingVertical="5dp"
+                        android:text="Normal"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/badge_normal_text" />
+                </LinearLayout>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ── Show Latest Measurement Button ── -->
+        <Button
+            android:id="@+id/btnViewMeasurements"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_btn_primary"
+            android:text="Show Latest Measurement"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:stateListAnimator="@null"
+            android:elevation="6dp" />
+
+        <!-- ── Quick Actions Grid ── -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="16dp"
+            android:orientation="horizontal">
+
+            <!-- Trends card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardTrends"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                app:cardCornerRadius="24dp"
+                app:cardElevation="3dp"
+                app:cardBackgroundColor="@color/card_background"
+                app:strokeColor="#E8EEFF"
+                app:strokeWidth="1dp">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="18dp">
+                    <FrameLayout
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_icon_purple">
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_trends"
+                            android:tint="#FFFFFF" />
+                    </FrameLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="Trends"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="View History"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Health Status card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardHealthStatus"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                app:cardCornerRadius="24dp"
+                app:cardElevation="3dp"
+                app:cardBackgroundColor="@color/card_background"
+                app:strokeColor="#E8EEFF"
+                app:strokeWidth="1dp">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="18dp">
+                    <FrameLayout
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_icon_green">
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_heart"
+                            android:tint="#FFFFFF" />
+                    </FrameLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="Health Status"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Check Status"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
+
+        <!-- ── Vitals Rows ── -->
+
+        <!-- PPG Signal -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardPpg"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="@color/card_background"
+            app:strokeColor="#E8EEFF"
+            app:strokeWidth="1dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:padding="16dp">
+                <FrameLayout
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
+                    android:background="@drawable/bg_icon_amber">
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_ppg"
+                        android:tint="#FFFFFF" />
+                </FrameLayout>
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="14dp"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="PPG Signal"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Real-time monitoring"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:src="@drawable/ic_back"
+                    android:tint="@color/text_hint"
+                    android:rotation="180" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Heart Rate -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardPulse"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="10dp"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="@color/card_background"
+            app:strokeColor="#E8EEFF"
+            app:strokeWidth="1dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:padding="16dp">
+                <FrameLayout
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
+                    android:background="@drawable/bg_icon_pink">
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_heart"
+                        android:tint="#FFFFFF" />
+                </FrameLayout>
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="14dp"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Heart Rate"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary" />
+                    <TextView
+                        android:id="@+id/tvHeartRate"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="72 bpm"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:src="@drawable/ic_back"
+                    android:tint="@color/text_hint"
+                    android:rotation="180" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Blood Pressure (navigate to detail) -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardBloodPressure"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="10dp"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="@color/card_background"
+            app:strokeColor="#E8EEFF"
+            app:strokeWidth="1dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:padding="16dp">
+                <FrameLayout
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
+                    android:background="@drawable/bg_icon_cyan">
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_pulse"
+                        android:tint="#FFFFFF" />
+                </FrameLayout>
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="14dp"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="All Measurements"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary" />
+                    <TextView
+                        android:id="@+id/tvBloodPressure"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="View all data"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:src="@drawable/ic_back"
+                    android:tint="@color/text_hint"
+                    android:rotation="180" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- View Trends button (hidden, kept for backwards compat) -->
+        <Button
+            android:id="@+id/btnViewTrends"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
+
+    </LinearLayout>
+</ScrollView>

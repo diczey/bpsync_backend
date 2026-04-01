@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_screen_violet"
+    android:orientation="vertical">
+
+    <!-- ── Non-scrolling Header ── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="8dp">
+
+        <!-- Back button -->
+        <FrameLayout
+            android:id="@+id/btnBack"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@color/card_background"
+            android:layout_marginBottom="14dp"
+            android:elevation="3dp"
+            android:outlineProvider="bounds"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_back"
+                android:tint="#8B5CF6" />
+        </FrameLayout>
+
+        <!-- Header card -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="28dp"
+            app:cardElevation="6dp"
+            app:cardBackgroundColor="@color/card_background"
+            app:strokeColor="#EDE9FE"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <!-- Icon + Title -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="16dp">
+
+                    <FrameLayout
+                        android:layout_width="56dp"
+                        android:layout_height="56dp"
+                        android:background="@drawable/bg_icon_purple"
+                        android:layout_marginEnd="14dp">
+                        <ImageView
+                            android:layout_width="28dp"
+                            android:layout_height="28dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_pulse"
+                            android:tint="#FFFFFF" />
+                    </FrameLayout>
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="All Measurements"
+                            android:textSize="22sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="-0.02"
+                            android:textColor="@color/text_primary" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Complete history"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Stats tiles row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <!-- Total -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="6dp"
+                        android:orientation="vertical"
+                        android:gravity="center_horizontal"
+                        android:background="@drawable/bg_stat_tile_purple"
+                        android:paddingVertical="12dp">
+                        <TextView
+                            android:id="@+id/tvStatTotal"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textSize="24sp"
+                            android:textStyle="bold"
+                            android:textColor="#8B5CF6" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:text="TOTAL"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="0.06"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+
+                    <!-- Normal -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginHorizontal="6dp"
+                        android:orientation="vertical"
+                        android:gravity="center_horizontal"
+                        android:background="@drawable/bg_stat_tile_green"
+                        android:paddingVertical="12dp">
+                        <TextView
+                            android:id="@+id/tvStatNormal"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textSize="24sp"
+                            android:textStyle="bold"
+                            android:textColor="#10B981" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:text="NORMAL"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="0.06"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+
+                    <!-- Alert -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="6dp"
+                        android:orientation="vertical"
+                        android:gravity="center_horizontal"
+                        android:background="@drawable/bg_stat_tile_amber"
+                        android:paddingVertical="12dp">
+                        <TextView
+                            android:id="@+id/tvStatAlert"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textSize="24sp"
+                            android:textStyle="bold"
+                            android:textColor="#F59E0B" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:text="ALERT"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="0.06"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+    </LinearLayout>
+
+    <!-- ── Measurements List ── -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerReadings"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="24dp"
+        android:clipToPadding="false"
+        android:overScrollMode="never" />
+
+    <!-- Hidden views kept for backend functionality -->
+    <TextView android:id="@+id/tvStatAverage" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <EditText android:id="@+id/etHeartRate" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <EditText android:id="@+id/etSystolic" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <EditText android:id="@+id/etDiastolic" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <EditText android:id="@+id/etSpo2" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <Button android:id="@+id/btnAddReading" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <EditText android:id="@+id/etPredictPtt" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <EditText android:id="@+id/etPredictHr" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <EditText android:id="@+id/etPredictAge" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <Button android:id="@+id/btnPredict" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <TextView android:id="@+id/tvPredictResult" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <EditText android:id="@+id/etCalSystolic" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <EditText android:id="@+id/etCalDiastolic" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <EditText android:id="@+id/etCalPtt" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <EditText android:id="@+id/etCalHr" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <Button android:id="@+id/btnCalibrate" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <TextView android:id="@+id/tvCalibrateResult" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <Button android:id="@+id/btnModelInfo" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <TextView android:id="@+id/tvModelInfo" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+
+</LinearLayout>
