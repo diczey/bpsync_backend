@@ -62,6 +62,7 @@ def create_sensor_tables():
             systolic   SMALLINT,
             diastolic  SMALLINT,
             heart_rate SMALLINT,
+            spo2       SMALLINT,
             ptt        FLOAT,
             quality    SMALLINT,
             category   VARCHAR(30)

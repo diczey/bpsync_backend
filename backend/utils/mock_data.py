@@ -411,6 +411,7 @@ def generate_trends(period: str = 'week') -> list:
         ('systolic',   lambda: generate_blood_pressure()[0]),
         ('diastolic',  lambda: generate_blood_pressure()[1]),
         ('heart_rate', lambda: generate_heart_rate()),
+        ('spo2',       lambda: generate_spo2()),
     ]
 
     for metric_type, value_fn in generators:

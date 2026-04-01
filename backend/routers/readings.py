@@ -107,7 +107,7 @@ def _row_to_dto(row) -> HealthReadingDto:
         heart_rate=row.heart_rate,
         systolic_bp=row.systolic,
         diastolic_bp=row.diastolic,
-        spo2=None,         # Not stored in bp_readings; future pipeline improvement
+        spo2=getattr(row, 'spo2', None),
         temperature=None,  # Not stored in bp_readings; future pipeline improvement
     )
 
@@ -133,7 +133,7 @@ async def get_readings(
     """
     rows = db.execute(
         text('''
-            SELECT time, user_id, systolic, diastolic, heart_rate
+            SELECT time, user_id, systolic, diastolic, heart_rate, spo2
             FROM bp_readings
             WHERE user_id = :uid
             ORDER BY time DESC
@@ -171,9 +171,9 @@ async def add_reading(
 
     The mobile sends a HealthReadingCreate object (timestamp, heart_rate,
     systolic_bp, diastolic_bp, spo2, temperature). We write systolic,
-    diastolic and heart_rate into bp_readings (the primary hypertable).
-    spo2 and temperature are acknowledged but not written because bp_readings
-    has no dedicated columns for them yet — this is flagged as a future DB
+    diastolic, heart_rate and spo2 into bp_readings (the primary hypertable).
+    temperature is acknowledged but not written because bp_readings
+    has no dedicated column for it yet — this is flagged as a future DB
     schema upgrade in backendGuide.md.
 
     The category string is derived from the systolic value using the same
@@ -196,8 +196,8 @@ async def add_reading(
 
     db.execute(
         text('''
-            INSERT INTO bp_readings (time, user_id, systolic, diastolic, heart_rate, category)
-            VALUES (:time, :uid, :sys, :dia, :hr, :cat)
+            INSERT INTO bp_readings (time, user_id, systolic, diastolic, heart_rate, spo2, category)
+            VALUES (:time, :uid, :sys, :dia, :hr, :spo2, :cat)
         '''),
         {
             'time': reading_time,
@@ -205,6 +205,7 @@ async def add_reading(
             'sys':  systolic or None,
             'dia':  diastolic or None,
             'hr':   request.heart_rate,
+            'spo2': request.spo2,
             'cat':  category,
         },
     )

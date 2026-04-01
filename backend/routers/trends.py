@@ -89,7 +89,8 @@ async def get_trends(
             SELECT 
                 AVG(systolic) AS avg_sys, MAX(systolic) AS max_sys, MIN(systolic) AS min_sys,
                 AVG(diastolic) AS avg_dia, MAX(diastolic) AS max_dia, MIN(diastolic) AS min_dia,
-                AVG(heart_rate) AS avg_hr, MAX(heart_rate) AS max_hr, MIN(heart_rate) AS min_hr
+                AVG(heart_rate) AS avg_hr, MAX(heart_rate) AS max_hr, MIN(heart_rate) AS min_hr,
+                AVG(spo2) AS avg_spo2, MAX(spo2) AS max_spo2, MIN(spo2) AS min_spo2
             FROM bp_readings
             WHERE user_id = :uid
               AND time >= NOW() - CAST(:back AS interval)
@@ -117,7 +118,8 @@ async def get_trends(
                 time_bucket(CAST(:bucket AS interval), time) AS bucket_time,
                 AVG(systolic) AS systolic,
                 AVG(diastolic) AS diastolic,
-                AVG(heart_rate) AS heart_rate
+                AVG(heart_rate) AS heart_rate,
+                AVG(spo2) AS spo2
             FROM bp_readings
             WHERE user_id = :uid
               AND time >= NOW() - CAST(:back AS interval)
@@ -127,7 +129,7 @@ async def get_trends(
         {'uid': current_user.id, 'back': back_interval, 'bucket': bucket_interval},
     ).fetchall()
 
-    points_sys, points_dia, points_hr = [], [], []
+    points_sys, points_dia, points_hr, points_spo2 = [], [], [], []
     for row in bucket_rows:
         ts = int(row.bucket_time.timestamp() * 1000)
         if row.systolic is not None:
@@ -136,6 +138,8 @@ async def get_trends(
             points_dia.append(TrendDataPoint(timestamp=ts, value=round(float(row.diastolic), 2)))
         if row.heart_rate is not None:
             points_hr.append(TrendDataPoint(timestamp=ts, value=round(float(row.heart_rate), 2)))
+        if hasattr(row, 'spo2') and row.spo2 is not None:
+            points_spo2.append(TrendDataPoint(timestamp=ts, value=round(float(row.spo2), 2)))
 
     trends = [
         TrendDataDto(
@@ -158,6 +162,13 @@ async def get_trends(
             average=round(float(summary_row.avg_hr), 2),
             min=round(float(summary_row.min_hr), 2),
             max=round(float(summary_row.max_hr), 2),
+        ),
+        TrendDataDto(
+            type="spo2",
+            data_points=points_spo2,
+            average=round(float(summary_row.avg_spo2), 2) if summary_row.avg_spo2 is not None else 0.0,
+            min=round(float(summary_row.min_spo2), 2) if summary_row.min_spo2 is not None else 0.0,
+            max=round(float(summary_row.max_spo2), 2) if summary_row.max_spo2 is not None else 0.0,
         )
     ]
 
