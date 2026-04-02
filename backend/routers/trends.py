@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from backend.database import get_sensor_db
 from backend.models.user import User
 from backend.utils.security import get_current_user
+from backend.utils.sensor_identity import sensor_user_clause, sensor_user_params
 
 router = APIRouter()
 
@@ -85,17 +86,20 @@ async def get_trends(
 
     # 1. Fetch total summary (stats across the entire requested period) for the top boxes
     summary_row = db.execute(
-        text('''
+        text(f'''
             SELECT 
                 AVG(systolic) AS avg_sys, MAX(systolic) AS max_sys, MIN(systolic) AS min_sys,
                 AVG(diastolic) AS avg_dia, MAX(diastolic) AS max_dia, MIN(diastolic) AS min_dia,
                 AVG(heart_rate) AS avg_hr, MAX(heart_rate) AS max_hr, MIN(heart_rate) AS min_hr,
                 AVG(spo2) AS avg_spo2, MAX(spo2) AS max_spo2, MIN(spo2) AS min_spo2
             FROM bp_readings
-            WHERE user_id = :uid
+            WHERE {sensor_user_clause()}
               AND time >= NOW() - CAST(:back AS interval)
         '''),
-        {'uid': current_user.id, 'back': back_interval},
+        {
+            **sensor_user_params(current_user),
+            'back': back_interval,
+        },
     ).fetchone()
 
     # If no data exists at all (avg_sys will be None)
@@ -113,7 +117,7 @@ async def get_trends(
 
     # 2. Fetch time-bucketed chart data points
     bucket_rows = db.execute(
-        text('''
+        text(f'''
             SELECT 
                 time_bucket(CAST(:bucket AS interval), time) AS bucket_time,
                 AVG(systolic) AS systolic,
@@ -121,12 +125,16 @@ async def get_trends(
                 AVG(heart_rate) AS heart_rate,
                 AVG(spo2) AS spo2
             FROM bp_readings
-            WHERE user_id = :uid
+            WHERE {sensor_user_clause()}
               AND time >= NOW() - CAST(:back AS interval)
             GROUP BY bucket_time
             ORDER BY bucket_time ASC
         '''),
-        {'uid': current_user.id, 'back': back_interval, 'bucket': bucket_interval},
+        {
+            **sensor_user_params(current_user),
+            'back': back_interval,
+            'bucket': bucket_interval,
+        },
     ).fetchall()
 
     points_sys, points_dia, points_hr, points_spo2 = [], [], [], []

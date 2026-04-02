@@ -6,6 +6,7 @@ import com.example.finalapp.ui.component.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,8 +18,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,6 +39,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.Canvas
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @Composable
 fun TrendsScreen(
@@ -105,6 +115,16 @@ fun TrendsScreen(
                 Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(8.dp))
             }
 
+            uiState.infoMessage?.takeIf { it.isNotBlank() }?.let { message ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = message,
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                )
+            }
+
             // Extract specific trends from backend DTOs
             val sysTrend = uiState.trends.find { it.type == "systolic" }
             val hrTrend = uiState.trends.find { it.type == "heart_rate" }
@@ -124,6 +144,13 @@ fun TrendsScreen(
 
 @Composable
 fun TrendChartSection(title: String, icon: ImageVector, color: Color, unit: String, trend: TrendDataDto?) {
+    val points = trend?.dataPoints.orEmpty()
+    var chartWidth by remember(trend?.type, points.size) { mutableStateOf(0f) }
+    var selectedIndex by remember(trend?.type, points.size) {
+        mutableStateOf(points.lastIndex.takeIf { it >= 0 })
+    }
+    val selectedPoint = selectedIndex?.let(points::getOrNull)
+
     PremiumGlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
@@ -137,21 +164,62 @@ fun TrendChartSection(title: String, icon: ImageVector, color: Color, unit: Stri
                         Text("Avg: ${trend?.average ?: "--"} $unit", fontSize = 11.sp, color = TextSecondary)
                     }
                 }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = selectedPoint?.let { "${formatTrendValue(it.value)} $unit" } ?: "--",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ForegroundBlack
+                    )
+                    Text(
+                        text = selectedPoint?.let { formatTrendTimestamp(it.timestamp) } ?: "Tap chart",
+                        fontSize = 11.sp,
+                        color = TextSecondary
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(20.dp))
             Box(modifier = Modifier.fillMaxWidth().height(180.dp).background(Color.White.copy(alpha = 0.3f), RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
-                if (trend != null && trend.dataPoints.isNotEmpty() && trend.max > 0) {
-                    Canvas(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                        val points = trend.dataPoints
-                        val minVal = trend.min * 0.9f
-                        val maxVal = trend.max * 1.1f
-                        val valueRange = maxVal - minVal
+                if (trend != null && points.isNotEmpty()) {
+                    val minPointValue = points.minOf { it.value }
+                    val maxPointValue = points.maxOf { it.value }
+                    val paddingValue = ((maxPointValue - minPointValue) * 0.15f).coerceAtLeast(1f)
+                    val minVal = minPointValue - paddingValue
+                    val maxVal = maxPointValue + paddingValue
+                    val valueRange = (maxVal - minVal).coerceAtLeast(1f)
+
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
+                            .onSizeChanged { chartWidth = it.width.toFloat() }
+                            .pointerInput(points) {
+                                detectTapGestures { offset ->
+                                    selectedIndex = nearestTrendPointIndex(
+                                        tapX = offset.x,
+                                        chartWidth = chartWidth,
+                                        pointCount = points.size
+                                    )
+                                }
+                            }
+                    ) {
                         val widthOffset = size.width / if (points.size > 1) (points.size - 1) else 1
+
+                        repeat(3) { step ->
+                            val y = size.height * step / 2f
+                            drawLine(
+                                color = TextMuted.copy(alpha = 0.25f),
+                                start = Offset(0f, y),
+                                end = Offset(size.width, y),
+                                strokeWidth = 1.dp.toPx(),
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 12f))
+                            )
+                        }
 
                         val path = Path()
                         points.forEachIndexed { index, point ->
                             val x = index * widthOffset
-                            val y = size.height - ((point.value - minVal) / valueRange * size.height).toFloat()
+                            val y = size.height - ((point.value - minVal) / valueRange * size.height)
                             if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
                         }
 
@@ -164,11 +232,108 @@ fun TrendChartSection(title: String, icon: ImageVector, color: Color, unit: Stri
                                 join = StrokeJoin.Round
                             )
                         )
+
+                        points.forEachIndexed { index, point ->
+                            val x = index * widthOffset
+                            val y = size.height - ((point.value - minVal) / valueRange * size.height)
+                            val isSelected = index == selectedIndex
+
+                            drawCircle(
+                                color = Color.White,
+                                radius = if (isSelected) 8.dp.toPx() else 5.dp.toPx(),
+                                center = Offset(x, y)
+                            )
+                            drawCircle(
+                                color = color,
+                                radius = if (isSelected) 5.dp.toPx() else 3.dp.toPx(),
+                                center = Offset(x, y)
+                            )
+                        }
+
+                        selectedIndex?.let { index ->
+                            val selectedPointValue = points.getOrNull(index) ?: return@let
+                            val selectedX = index * widthOffset
+                            val selectedY = size.height - ((selectedPointValue.value - minVal) / valueRange * size.height)
+
+                            drawLine(
+                                color = color.copy(alpha = 0.35f),
+                                start = Offset(selectedX, 0f),
+                                end = Offset(selectedX, size.height),
+                                strokeWidth = 2.dp.toPx(),
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f))
+                            )
+
+                            drawCircle(
+                                color = color,
+                                radius = 7.dp.toPx(),
+                                center = Offset(selectedX, selectedY)
+                            )
+                            drawCircle(
+                                color = Color.White,
+                                radius = 3.dp.toPx(),
+                                center = Offset(selectedX, selectedY)
+                            )
+                        }
                     }
                 } else {
                     Text("No recorded data to chart", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
+            if (points.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = formatTrendAxisLabel(points.first().timestamp),
+                        fontSize = 11.sp,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = "Tap a point to inspect",
+                        fontSize = 11.sp,
+                        color = TextMuted
+                    )
+                    Text(
+                        text = formatTrendAxisLabel(points.last().timestamp),
+                        fontSize = 11.sp,
+                        color = TextSecondary
+                    )
+                }
+            }
         }
     }
+}
+
+private fun nearestTrendPointIndex(tapX: Float, chartWidth: Float, pointCount: Int): Int {
+    if (pointCount <= 1 || chartWidth <= 0f) return 0
+
+    val step = chartWidth / (pointCount - 1)
+    val normalized = tapX.coerceIn(0f, chartWidth)
+    return (normalized / step).roundToInt().coerceIn(0, pointCount - 1)
+}
+
+private fun formatTrendTimestamp(timestamp: Long): String {
+    val formatter = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
+    return formatter.format(Date(normalizeTrendTimestamp(timestamp)))
+}
+
+private fun formatTrendAxisLabel(timestamp: Long): String {
+    val formatter = SimpleDateFormat("dd MMM", Locale.getDefault())
+    return formatter.format(Date(normalizeTrendTimestamp(timestamp)))
+}
+
+private fun formatTrendValue(value: Float): String {
+    val rounded = value.roundToInt()
+    return if (abs(value - rounded) < 0.05f) {
+        rounded.toString()
+    } else {
+        String.format(Locale.getDefault(), "%.1f", value)
+    }
+}
+
+private fun normalizeTrendTimestamp(timestamp: Long): Long {
+    return if (timestamp < 1_000_000_000_000L) timestamp * 1000 else timestamp
 }

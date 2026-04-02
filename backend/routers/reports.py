@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from backend.database import get_sensor_db
 from backend.models.user import User
 from backend.utils.security import get_current_user
+from backend.utils.sensor_identity import sensor_user_clause, sensor_user_params
 
 router = APIRouter()
 
@@ -89,7 +90,7 @@ async def get_weekly_report(
     """
     # Daily aggregation for the selected week
     rows = db.execute(
-        text('''
+        text(f'''
             SELECT
                 time_bucket('1 day', time) AS day,
                 ROUND(AVG(systolic)::numeric, 1)   AS avg_sys,
@@ -97,14 +98,14 @@ async def get_weekly_report(
                 ROUND(AVG(heart_rate)::numeric, 1) AS avg_hr,
                 COUNT(*) AS cnt
             FROM bp_readings
-            WHERE user_id = :uid
+            WHERE {sensor_user_clause()}
               AND time >= NOW() - INTERVAL :start_back
               AND time <  NOW() - INTERVAL :end_back
             GROUP BY day
             ORDER BY day ASC
         '''),
         {
-            'uid': current_user.id,
+            **sensor_user_params(current_user),
             'start_back': '{} days'.format((week_offset + 1) * 7),
             'end_back':   '{} days'.format(week_offset * 7),
         },
@@ -161,7 +162,7 @@ async def get_monthly_report(
     effectively hold month_start/month_end in this context).
     """
     rows = db.execute(
-        text('''
+        text(f'''
             SELECT
                 time_bucket('1 day', time) AS day,
                 ROUND(AVG(systolic)::numeric, 1)   AS avg_sys,
@@ -169,14 +170,14 @@ async def get_monthly_report(
                 ROUND(AVG(heart_rate)::numeric, 1) AS avg_hr,
                 COUNT(*) AS cnt
             FROM bp_readings
-            WHERE user_id = :uid
+            WHERE {sensor_user_clause()}
               AND time >= NOW() - INTERVAL :start_back
               AND time <  NOW() - INTERVAL :end_back
             GROUP BY day
             ORDER BY day ASC
         '''),
         {
-            'uid': current_user.id,
+            **sensor_user_params(current_user),
             'start_back': '{} days'.format((month_offset + 1) * 30),
             'end_back':   '{} days'.format(month_offset * 30),
         },

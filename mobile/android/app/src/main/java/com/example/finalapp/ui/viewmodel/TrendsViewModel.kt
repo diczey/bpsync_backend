@@ -15,7 +15,8 @@ data class TrendsUiState(
     val selectedPeriod: String = "weekly",
     val trends: List<TrendDataDto> = emptyList(),
     val isLoading: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val infoMessage: String? = null
 )
 
 class TrendsViewModel(
@@ -50,9 +51,10 @@ class TrendsViewModel(
                 is RepositoryResult.Success -> {
                     _uiState.update { 
                         it.copy(
-                            trends = result.data,
+                            trends = result.data.trends,
                             isLoading = false,
-                            errorMessage = null
+                            errorMessage = null,
+                            infoMessage = result.data.message
                         ) 
                     }
                 }
@@ -60,7 +62,8 @@ class TrendsViewModel(
                     _uiState.update { 
                         it.copy(
                             isLoading = false,
-                            errorMessage = result.message
+                            errorMessage = result.message,
+                            infoMessage = null
                         ) 
                     }
                 }

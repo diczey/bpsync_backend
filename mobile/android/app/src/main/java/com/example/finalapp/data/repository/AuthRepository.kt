@@ -18,6 +18,7 @@ class AuthRepository(
             onSuccess = { response ->
                 response.toAuthResult().also { result ->
                     if (result is RepositoryResult.Success) {
+                        ReadingRepository.clear()
                         SessionStore.setSession(response.body()?.token, result.data)
                     }
                 }
@@ -33,6 +34,7 @@ class AuthRepository(
             onSuccess = { response ->
                 response.toAuthResult().also { result ->
                     if (result is RepositoryResult.Success) {
+                        ReadingRepository.clear()
                         SessionStore.setSession(response.body()?.token, result.data)
                     }
                 }
@@ -42,6 +44,7 @@ class AuthRepository(
     }
 
     fun logout() {
+        ReadingRepository.clear()
         SessionStore.clear()
     }
 
