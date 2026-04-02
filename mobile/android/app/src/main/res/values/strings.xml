@@ -1,18 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">BP Sync</string>
-    <string name="subtitle_tagline">Blood Pressure Monitoring</string>
-    <string name="welcome">Welcome</string>
-    <string name="today_summary">Today\'s Summary</string>
-    <string name="heart_rate">Pulse</string>
-    <string name="blood_pressure">Blood Pressure</string>
-    <string name="readings">Measurements</string>
-    <string name="reports">Reports</string>
-    <string name="last_updated">Last updated</string>
-
-    <string-array name="gender_options">
-        <item>Male</item>
-        <item>Female</item>
-        <item>Other</item>
-    </string-array>
+    <string name="app_name">FinalApp</string>
 </resources>
