@@ -39,8 +39,11 @@ class BleRepository(
             onSuccess = { response ->
                 val body = response.body()
                 when {
-                    response.isSuccessful && body?.success == true ->
-                        RepositoryResult.Success(DEFAULT_DEVICES)
+                    response.isSuccessful && body?.found == true && body.deviceName != null ->
+                        // Real BPSync wristband found via Bluetooth scan
+                        RepositoryResult.Success(listOf(body.deviceName))
+                    response.isSuccessful && body?.found == false ->
+                        RepositoryResult.Error("No BPSync wristband found nearby. Make sure it's turned on.")
                     body?.message?.isNotBlank() == true ->
                         RepositoryResult.Error(body.message)
                     else ->
@@ -48,16 +51,60 @@ class BleRepository(
                 }
             },
             onFailure = {
+                // Railway doesn't have physical BLE hardware, show demo devices so UI is usable
                 RepositoryResult.Success(DEFAULT_DEVICES)
             }
         )
     }
 
+    suspend fun startStreaming(): RepositoryResult<String> {
+        val token = SessionStore.token.value
+            ?: return RepositoryResult.Error("No active session.")
+
+        return runCatching {
+            apiService.startStreaming("Bearer $token")
+        }.fold(
+            onSuccess = { response ->
+                val body = response.body()
+                if (response.isSuccessful && body?.success == true) {
+                    RepositoryResult.Success(body.message)
+                } else {
+                    RepositoryResult.Error(body?.message ?: "Could not start streaming.")
+                }
+            },
+            onFailure = {
+                RepositoryResult.Error(it.message ?: "Failed to start streaming.")
+            }
+        )
+    }
+
+    suspend fun stopStreaming(): RepositoryResult<String> {
+        val token = SessionStore.token.value
+            ?: return RepositoryResult.Error("No active session.")
+
+        return runCatching {
+            apiService.stopStreaming("Bearer $token")
+        }.fold(
+            onSuccess = { response ->
+                val body = response.body()
+                if (response.isSuccessful && body?.success == true) {
+                    RepositoryResult.Success(body.message)
+                } else {
+                    RepositoryResult.Error(body?.message ?: "Could not stop streaming.")
+                }
+            },
+            onFailure = {
+                RepositoryResult.Error(it.message ?: "Failed to stop streaming.")
+            }
+        )
+    }
+
     companion object {
+        // Shown as fallback when the Railway server doesn't have physical BLE hardware available
         private val DEFAULT_DEVICES = listOf(
+            "BPSync-Wrist (Demo)",
             "BP Monitor Pro",
-            "HealthSync Smart",
-            "VitalsCheck V2"
+            "HealthSync Smart"
         )
     }
 }

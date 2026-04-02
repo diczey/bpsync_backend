@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.repository.AuthRepository
 import com.example.finalapp.data.repository.BleRepository
 import com.example.finalapp.data.repository.DashboardRepository
+import com.example.finalapp.data.repository.ProfileRepository
 import com.example.finalapp.data.repository.ReadingRepository
 import com.example.finalapp.data.repository.RepositoryResult
 import com.example.finalapp.data.repository.SessionStore
@@ -24,13 +25,15 @@ data class DashboardUiState(
     val bleDeviceName: String = "BP Monitor Pro",
     val bleConnectedLabel: String = "Disconnected",
     val isLoading: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val lastCheckupDate: String? = null
 )
 
 class DashboardViewModel(
     private val dashboardRepository: DashboardRepository = DashboardRepository(),
     private val bleRepository: BleRepository = BleRepository(),
-    private val authRepository: AuthRepository = AuthRepository()
+    private val authRepository: AuthRepository = AuthRepository(),
+    private val profileRepository: ProfileRepository = ProfileRepository()
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
@@ -123,12 +126,33 @@ class DashboardViewModel(
         authRepository.logout()
     }
 
+    fun updateLastCheckupDate(date: String) {
+        val user = SessionStore.user.value ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            val result = profileRepository.saveProfile(
+                name = user.name,
+                email = user.email,
+                gender = user.gender ?: "",
+                weight = user.weight ?: "",
+                height = user.height ?: "",
+                lastCheckupDate = date
+            )
+            if (result is RepositoryResult.Success) {
+                _uiState.update { it.copy(lastCheckupDate = date, isLoading = false) }
+            } else {
+                _uiState.update { it.copy(isLoading = false, errorMessage = "Failed to save date") }
+            }
+        }
+    }
+
     private fun hydrateFromSession() {
         val user = SessionStore.user.value ?: return
         _uiState.update {
             it.copy(
                 userName = user.name.ifBlank { "John Doe" },
-                healthId = user.id.ifBlank { "BP2024" }
+                healthId = user.id.ifBlank { "BP2024" },
+                lastCheckupDate = user.lastCheckupDate
             )
         }
     }

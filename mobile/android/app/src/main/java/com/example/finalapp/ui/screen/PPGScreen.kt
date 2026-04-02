@@ -22,9 +22,18 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.finalapp.ui.navigation.Screen
 import com.example.finalapp.ui.theme.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.finalapp.ui.viewmodel.PpgViewModel
+import androidx.compose.foundation.Canvas
 
 @Composable
-fun PPGScreen(navController: NavController) {
+fun PPGScreen(
+    navController: NavController,
+    viewModel: PpgViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -64,14 +73,21 @@ fun PPGScreen(navController: NavController) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Box(modifier = Modifier.weight(1f).background(CyanMain.copy(alpha = 0.05f), RoundedCornerShape(16.dp)).padding(16.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("87", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = CyanMain)
-                                Text("Average", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
+                                Text(
+                                    if (uiState.isLoading && uiState.avgQuality == 0) "--" else "${uiState.avgQuality}", 
+                                    fontSize = 32.sp, fontWeight = FontWeight.Bold, color = CyanMain
+                                )
+                                Text("Avg Quality", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
                             }
                         }
                         Box(modifier = Modifier.weight(1f).background(SuccessGreen.copy(alpha = 0.05f), RoundedCornerShape(16.dp)).padding(16.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("94%", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = SuccessGreen)
-                                Text("Quality", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
+                                val stabilityColor = if (uiState.signalStability > 80) SuccessGreen else if (uiState.signalStability > 50) OrangeMain else ErrorRed
+                                Text(
+                                    if (uiState.isLoading && uiState.signalStability == 0) "--" else "${uiState.signalStability}%", 
+                                    fontSize = 32.sp, fontWeight = FontWeight.Bold, color = stabilityColor
+                                )
+                                Text("Stability", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -85,8 +101,64 @@ fun PPGScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(12.dp))
 
             PremiumGlassCard(modifier = Modifier.fillMaxWidth().height(240.dp)) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("PPG Signal Graph Placeholder", color = TextMuted, fontWeight = FontWeight.Medium)
+                if (uiState.isLoading && uiState.chartPoints.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = CyanMain)
+                    }
+                } else if (uiState.chartPoints.isNotEmpty()) {
+                    Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 24.dp)) {
+                        val width = size.width
+                        val height = size.height
+                        val points = uiState.chartPoints
+
+                        val maxQ = 100f
+                        val minQ = 0f
+
+                        val tMax = points.last().timestamp
+                        val tMin = points.first().timestamp
+                        val tRange = (tMax - tMin).toFloat().takeIf { it > 0 } ?: 1f
+
+                        val path = androidx.compose.ui.graphics.Path()
+
+                        points.forEachIndexed { i, p ->
+                            val normalizedX = (p.timestamp - tMin).toFloat() / tRange
+                            val normalizedY = 1f - (p.quality - minQ) / (maxQ - minQ)
+
+                            val x = normalizedX * width
+                            val y = normalizedY * height
+
+                            if (i == 0) {
+                                path.moveTo(x, y)
+                            } else {
+                                val prevP = points[i - 1]
+                                val prevX = ((prevP.timestamp - tMin).toFloat() / tRange) * width
+                                val prevY = (1f - (prevP.quality - minQ) / (maxQ - minQ)) * height
+
+                                val controlX1 = prevX + (x - prevX) / 2f
+                                val controlX2 = prevX + (x - prevX) / 2f
+
+                                path.cubicTo(
+                                    controlX1, prevY,
+                                    controlX2, y,
+                                    x, y
+                                )
+                            }
+                        }
+
+                        drawPath(
+                            path = path,
+                            color = CyanMain,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = 3.dp.toPx(),
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                join = androidx.compose.ui.graphics.StrokeJoin.Round
+                            )
+                        )
+                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(uiState.errorMessage ?: "Failed to generate signal.", color = TextMuted, fontWeight = FontWeight.Medium)
+                    }
                 }
             }
 

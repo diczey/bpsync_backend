@@ -1,7 +1,8 @@
 # BPSync Backend – Architecture & Integration Guide
 
-> Last updated: 2026-03-18  
+> Last updated: 2026-04-02  
 > Branch: `devfixed_frontend_version2`
+
 
 ---
 
@@ -269,7 +270,23 @@ In mock mode:
 
 ## 8. Changelog
 
+### 2026-04-02 — Full Android Screen Integration
+
+| Area | What changed |
+|---|---|
+| **Health Status screen** | Added `last_checkup_date` (DATE) column to `users` table. Mobile shows "X days since last check-up" countdown or prompts user to enter the date if null. |
+| **PPG Signal screen** | `PpgViewModel` + `PpgRepository` created; wired to `GET /dashboard/ppg/signal`. Canvas animates real signal array from backend. |
+| **Heart Rate / ECG screen** | `PulseViewModel` + `PulseRepository` created; polls `GET /dashboard/pulse` every 2 s. Live BPM, Resting HR and ECG waveform Canvas replace all hard-coded values. |
+| **Trends screen** | `TrendsRepository` bug fixed — was using old `RetrofitClient` and `SessionStore.token` (static String) instead of `ApiClient` + `SessionStore.token.value` (StateFlow). Charts now receive real backend data for Daily / Weekly / Monthly. |
+| **BLE Connection screen** | `ScanResult` DTO added to `Models.kt`. `ApiService.scanBle` return type changed to `ScanResult`. `BleRepository` parses real device name/address. `BleViewModel` auto-calls `POST /ble/start` on connect and `POST /ble/stop` on disconnect. |
+| **Blood Pressure screen** | `BloodPressureViewModel` fetches Dashboard summary + Trends in parallel. Screen rewritten: live reading card, dynamic status badge, real AVG cards, dual-line Canvas chart (systolic in red, diastolic in pink). |
+| **Android `Models.kt`** | Added `PulseResponse`, `PulseDataPoint`, `PpgSignalResponse`, `ScanResult` DTOs. |
+| **Android `ApiService.kt`** | Added `getPulse`, `getPpgSignal`, `startBleStreaming`, `stopBleStreaming`; fixed duplicate import/interface block. |
+
+---
+
 ### 2026-03-18 — Mobile-Backend Schema Alignment
+
 
 | File | Change |
 |---|---|

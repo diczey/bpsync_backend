@@ -41,7 +41,8 @@ async def get_profile(
             weight=current_user.weight,
             height=current_user.height,
             blood_type=current_user.blood_type,
-            emergency_contact=current_user.emergency_contact
+            emergency_contact=current_user.emergency_contact,
+            last_checkup_date=current_user.last_checkup_date
         )
     )
 
@@ -74,6 +75,8 @@ async def update_profile(
         current_user.blood_type = request.blood_type
     if request.emergency_contact is not None:
         current_user.emergency_contact = request.emergency_contact
+    if request.last_checkup_date is not None:
+        current_user.last_checkup_date = request.last_checkup_date
     
     db.commit()
     db.refresh(current_user)
@@ -90,7 +93,8 @@ async def update_profile(
             weight=current_user.weight,
             height=current_user.height,
             blood_type=current_user.blood_type,
-            emergency_contact=current_user.emergency_contact
+            emergency_contact=current_user.emergency_contact,
+            last_checkup_date=current_user.last_checkup_date
         ),
         message="Profil güncellendi"
     )

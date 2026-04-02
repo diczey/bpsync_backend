@@ -28,10 +28,16 @@ import androidx.navigation.NavController
 import com.example.finalapp.ui.navigation.Screen
 import com.example.finalapp.ui.theme.*
 import kotlinx.coroutines.delay
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.finalapp.ui.viewmodel.PulseViewModel
 
 @Composable
-fun PulseScreen(navController: NavController) {
-    var isMonitoring by remember { mutableStateOf(true) }
+fun PulseScreen(
+    navController: NavController,
+    viewModel: PulseViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     
     Box(
         modifier = Modifier
@@ -73,18 +79,21 @@ fun PulseScreen(navController: NavController) {
                             Text("Current BPM", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
                         }
                         IconButton(
-                            onClick = { isMonitoring = !isMonitoring },
-                            modifier = Modifier.background(if (isMonitoring) ErrorRed else SuccessGreen, RoundedCornerShape(16.dp))
+                            onClick = { viewModel.toggleMonitoring() },
+                            modifier = Modifier.background(if (uiState.isMonitoring) ErrorRed else SuccessGreen, RoundedCornerShape(16.dp))
                         ) {
-                            Icon(if (isMonitoring) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
+                            Icon(if (uiState.isMonitoring) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
                         }
                     }
 
                     Spacer(modifier = Modifier.height(32.dp))
 
                     Box(contentAlignment = Alignment.Center) {
-                         Text("72", fontSize = 72.sp, fontWeight = FontWeight.Bold, color = ActivePink)
-                         if (isMonitoring) {
+                         Text(
+                             if (uiState.isLoading && uiState.currentBpm == 0) "--" else "${uiState.currentBpm}", 
+                             fontSize = 72.sp, fontWeight = FontWeight.Bold, color = ActivePink
+                         )
+                         if (uiState.isMonitoring) {
                              Box(modifier = Modifier.size(12.dp).offset(x = 60.dp).background(SuccessGreen, RoundedCornerShape(6.dp)))
                          }
                     }
@@ -97,11 +106,12 @@ fun PulseScreen(navController: NavController) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column {
                             Text("Status", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Bold)
-                            Text("Normal", fontSize = 14.sp, color = SuccessGreen, fontWeight = FontWeight.Bold)
+                            val statusColor = if (uiState.statusLabel == "Normal") SuccessGreen else if (uiState.statusLabel == "Waiting") TextMuted else ErrorRed
+                            Text(uiState.statusLabel, fontSize = 14.sp, color = statusColor, fontWeight = FontWeight.Bold)
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text("Resting HR", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Bold)
-                            Text("68 BPM", fontSize = 14.sp, color = ForegroundBlack, fontWeight = FontWeight.Bold)
+                            Text(if (uiState.isLoading && uiState.restingHr == 0) "-- BPM" else "${uiState.restingHr} BPM", fontSize = 14.sp, color = ForegroundBlack, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -124,16 +134,20 @@ fun PulseScreen(navController: NavController) {
                            Spacer(modifier = Modifier.width(8.dp))
                            Text("Live ECG", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         }
-                        Text(if (isMonitoring) "Recording..." else "Paused", color = if (isMonitoring) SuccessGreen else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(if (uiState.isMonitoring) "Recording..." else "Paused", color = if (uiState.isMonitoring) SuccessGreen else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                     
                     Spacer(modifier = Modifier.height(24.dp))
                     
-                    if (isMonitoring) {
-                         ECGWaveform()
-                    } else {
+                    if (uiState.isMonitoring && uiState.ecgWaveformPoints.isNotEmpty()) {
+                         ECGWaveform(points = uiState.ecgWaveformPoints)
+                    } else if (!uiState.isMonitoring) {
                          Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                              Text("Monitoring Paused", color = TextMuted, fontSize = 14.sp)
+                         }
+                    } else {
+                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                             CircularProgressIndicator(color = ActivePink)
                          }
                     }
                 }
@@ -161,7 +175,7 @@ fun PulseScreen(navController: NavController) {
 }
 
 @Composable
-fun ECGWaveform() {
+fun ECGWaveform(points: List<Float>) {
     val infiniteTransition = rememberInfiniteTransition()
     val phase by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -180,24 +194,21 @@ fun ECGWaveform() {
         
         path.moveTo(0f, centerY)
         
-        val points = 300
-        val segmentWidth = width / points
-        
-        for (i in 0..points) {
-            val x = i * segmentWidth
-            val normalizedX = (i + phase * points) % points
+        val pointsCount = points.size
+        if (pointsCount > 0) {
+            val segmentWidth = width / pointsCount
+            // The synthetic ECG points from backend range from approximately -2.0 to 2.0
+            val scaleY = height / 5f 
             
-            // Generate ECG pattern (P-QRS-T)
-            var yOffset = 0f
-            val pos = normalizedX % 60
-            
-            if (pos in 10f..14f) yOffset = -15f // P wave
-            else if (pos in 20f..22f) yOffset = 10f // Q wave
-            else if (pos in 22f..24f) yOffset = -60f // R wave
-            else if (pos in 24f..26f) yOffset = 15f // S wave
-            else if (pos in 35f..45f) yOffset = -25f // T wave
-            
-            path.lineTo(x, centerY + yOffset)
+            for (i in 0 until pointsCount) {
+                val x = i * segmentWidth
+                val dataIndex = ((i + phase * pointsCount).toInt()) % pointsCount
+                val rawY = points[dataIndex]
+                
+                path.lineTo(x, centerY - (rawY * scaleY))
+            }
+        } else {
+            path.lineTo(width, centerY)
         }
         
         drawPath(

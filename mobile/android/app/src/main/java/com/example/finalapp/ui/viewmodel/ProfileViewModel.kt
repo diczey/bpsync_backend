@@ -73,23 +73,26 @@ class ProfileViewModel(
     fun updateEmail(email: String) = updateField { it.copy(email = email) }
 
     private fun saveProfile() {
-        val currentState = _uiState.value
-        when (
-            val result = profileRepository.saveLocalProfile(
-                name = currentState.name,
-                email = currentState.email,
-                gender = currentState.gender,
-                weight = currentState.weight,
-                height = currentState.height
-            )
-        ) {
-            is RepositoryResult.Success -> {
-                applyUser(result.data, message = "Profile saved locally.")
-                _uiState.update { it.copy(isEditing = false) }
-            }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            val currentState = _uiState.value
+            when (
+                val result = profileRepository.saveProfile(
+                    name = currentState.name,
+                    email = currentState.email,
+                    gender = currentState.gender,
+                    weight = currentState.weight,
+                    height = currentState.height
+                )
+            ) {
+                is RepositoryResult.Success -> {
+                    applyUser(result.data, message = "Profile saved successfully!")
+                    _uiState.update { it.copy(isEditing = false, isLoading = false) }
+                }
 
-            is RepositoryResult.Error -> {
-                _uiState.update { it.copy(message = result.message) }
+                is RepositoryResult.Error -> {
+                    _uiState.update { it.copy(message = result.message, isLoading = false) }
+                }
             }
         }
     }

@@ -24,6 +24,7 @@ class User(Base):
     height = Column(String, nullable=True)
     blood_type = Column(String, nullable=True)
     emergency_contact = Column(String, nullable=True)
+    last_checkup_date = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

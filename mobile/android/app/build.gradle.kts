@@ -9,7 +9,7 @@ android {
     compileSdk = 36
 
     val apiBaseUrl = providers.gradleProperty("API_BASE_URL")
-        .orElse("http://10.0.2.2:8080/")
+        .orElse("https://bpsyncbackend-production.up.railway.app/")
 
     defaultConfig {
         applicationId = "com.example.finalapp"

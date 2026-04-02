@@ -25,21 +25,49 @@ import androidx.navigation.NavController
 import com.example.finalapp.ui.navigation.Screen
 import com.example.finalapp.ui.theme.*
 import kotlinx.coroutines.delay
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
+
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.finalapp.ui.viewmodel.DashboardViewModel
 
 @Composable
-fun HealthStatusScreen(navController: NavController) {
-    var days by remember { mutableStateOf(2) }
-    var hours by remember { mutableStateOf(23) }
-    var minutes by remember { mutableStateOf(45) }
-    var seconds by remember { mutableStateOf(30) }
+fun HealthStatusScreen(
+    navController: NavController,
+    viewModel: DashboardViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000)
-            if (seconds > 0) seconds--
-            else if (minutes > 0) { minutes--; seconds = 59 }
-            else if (hours > 0) { hours--; minutes = 59; seconds = 59 }
-            else if (days > 0) { days--; hours = 23; minutes = 59; seconds = 59 }
+    var dateInput by remember { mutableStateOf("") }
+    var days by remember { mutableStateOf(0L) }
+    var hours by remember { mutableStateOf(0L) }
+    var minutes by remember { mutableStateOf(0L) }
+    var seconds by remember { mutableStateOf(0L) }
+
+    val checkupStr = uiState.lastCheckupDate
+
+    LaunchedEffect(checkupStr) {
+        if (!checkupStr.isNullOrBlank()) {
+            try {
+                val lastDate = LocalDate.parse(checkupStr).atStartOfDay()
+                while (true) {
+                    val now = LocalDateTime.now()
+                    val diffSeconds = ChronoUnit.SECONDS.between(lastDate, now)
+                    if (diffSeconds > 0) {
+                        days = diffSeconds / (24 * 3600)
+                        hours = (diffSeconds % (24 * 3600)) / 3600
+                        minutes = (diffSeconds % 3600) / 60
+                        seconds = diffSeconds % 60
+                    } else {
+                        days = 0L; hours = 0L; minutes = 0L; seconds = 0L
+                    }
+                    delay(1000)
+                }
+            } catch (e: Exception) {
+                // Invalid date
+            }
         }
     }
 
@@ -82,16 +110,41 @@ fun HealthStatusScreen(navController: NavController) {
                         Icon(Icons.Default.AccessTime, contentDescription = null, tint = Color.White, modifier = Modifier.fillMaxSize())
                     }
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Time Until Check-In", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text("Stay healthy with regular monitoring", fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                    Text("Time Since Last Check-In", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text("Stay consistent with regular check-ups", fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
 
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                         CountdownItem(modifier = Modifier.weight(1f), value = days.toString(), label = "Days")
-                         CountdownItem(modifier = Modifier.weight(1f), value = hours.toString().padStart(2, '0'), label = "Hours")
-                         CountdownItem(modifier = Modifier.weight(1f), value = minutes.toString().padStart(2, '0'), label = "Mins")
-                         CountdownItem(modifier = Modifier.weight(1f), value = seconds.toString().padStart(2, '0'), label = "Secs")
+                    if (checkupStr.isNullOrBlank()) {
+                        Text("Please enter your last checkup date:", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = ForegroundBlack)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = dateInput,
+                            onValueChange = { dateInput = it },
+                            placeholder = { Text("YYYY-MM-DD") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { viewModel.updateLastCheckupDate(dateInput) },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                        ) {
+                            Text(if (uiState.isLoading) "Saving..." else "Save Date", fontWeight = FontWeight.Bold)
+                        }
+                        if (uiState.errorMessage != null && uiState.errorMessage!!.contains("save date", ignoreCase = true)) {
+                            Text(uiState.errorMessage!!, color = ErrorRed, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                        }
+                    } else {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CountdownItem(modifier = Modifier.weight(1f), value = days.toString(), label = "Days")
+                            CountdownItem(modifier = Modifier.weight(1f), value = hours.toString().padStart(2, '0'), label = "Hours")
+                            CountdownItem(modifier = Modifier.weight(1f), value = minutes.toString().padStart(2, '0'), label = "Mins")
+                            CountdownItem(modifier = Modifier.weight(1f), value = seconds.toString().padStart(2, '0'), label = "Secs")
+                        }
                     }
                 }
             }
@@ -108,13 +161,41 @@ fun HealthStatusScreen(navController: NavController) {
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text("Current Status", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                            Text("All metrics normal", fontSize = 12.sp, color = TextSecondary)
+                            Text(if (uiState.isLoading) "Loading metrics..." else "Based on latest readings", fontSize = 12.sp, color = TextSecondary)
                         }
                     }
                     Spacer(modifier = Modifier.height(20.dp))
-                    StatusRow(label = "Blood Pressure", status = "Normal", color = SuccessGreen)
-                    StatusRow(label = "Heart Rate", status = "Normal", color = SuccessGreen)
-                    StatusRow(label = "Oxygen Level", status = "Normal", color = SuccessGreen)
+                    
+                    val sys = uiState.systolic.toIntOrNull() ?: 0
+                    val dia = uiState.diastolic.toIntOrNull() ?: 0
+                    val bpStatus = when {
+                        sys == 0 || dia == 0 -> "No Data" to TextSecondary
+                        sys < 120 && dia < 80 -> "Normal" to SuccessGreen
+                        sys in 120..129 && dia < 80 -> "Elevated" to OrangeMain
+                        sys in 130..139 || dia in 80..89 -> "Stage 1 High" to ErrorRed
+                        sys >= 140 || dia >= 90 -> "Stage 2 High" to ErrorRed
+                        else -> "Critical" to ErrorRed
+                    }
+
+                    val pulse = uiState.pulse.toIntOrNull() ?: 0
+                    val hrStatus = when {
+                        pulse == 0 -> "No Data" to TextSecondary
+                        pulse in 60..100 -> "Normal" to SuccessGreen
+                        pulse < 60 -> "Low" to ActivePink
+                        else -> "High" to ErrorRed
+                    }
+
+                    val spo2 = uiState.spo2.toIntOrNull() ?: 0
+                    val spo2Status = when {
+                        spo2 == 0 -> "No Data" to TextSecondary
+                        spo2 >= 95 -> "Normal" to PrimaryBlue
+                        spo2 in 90..94 -> "Low" to OrangeMain
+                        else -> "Critical" to ErrorRed
+                    }
+                    
+                    StatusRow(label = "Blood Pressure", status = bpStatus.first, color = bpStatus.second)
+                    StatusRow(label = "Heart Rate", status = hrStatus.first, color = hrStatus.second)
+                    StatusRow(label = "Oxygen Level", status = spo2Status.first, color = spo2Status.second)
                 }
             }
             

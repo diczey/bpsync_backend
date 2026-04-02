@@ -80,6 +80,15 @@ def create_sensor_tables():
 def create_tables():
     """Create all ORM-managed tables (users, notifications) and sensor tables."""
     Base.metadata.create_all(bind=pg_engine)
+    
+    # Safe migration for new columns
+    try:
+        with pg_engine.connect() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_checkup_date VARCHAR"))
+            conn.commit()
+    except Exception as e:
+        print(f"[DB] Migration warning (last_checkup_date): {e}")
+
     try:
         create_sensor_tables()
     except Exception as e:

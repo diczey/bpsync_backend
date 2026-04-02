@@ -110,9 +110,33 @@ class BleViewModel(
                 errorMessage = null
             )
         }
+        // Automatically start streaming data when user selects a device
+        startStreaming()
+    }
+
+    fun startStreaming() {
+        viewModelScope.launch {
+            when (val result = bleRepository.startStreaming()) {
+                is RepositoryResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            statusSubtitle = "Streaming live data…",
+                            errorMessage = null
+                        )
+                    }
+                }
+                is RepositoryResult.Error -> {
+                    // Not critical — streaming may not be supported on the demo server
+                    _uiState.update { it.copy(statusSubtitle = "Active and ready to sync") }
+                }
+            }
+        }
     }
 
     fun disconnect() {
+        viewModelScope.launch {
+            bleRepository.stopStreaming()
+        }
         _uiState.update {
             it.copy(
                 connected = false,

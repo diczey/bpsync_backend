@@ -42,35 +42,42 @@ class ProfileRepository(
         )
     }
 
-    fun saveLocalProfile(
+    suspend fun saveProfile(
         name: String,
         email: String,
         gender: String,
         weight: String,
-        height: String
+        height: String,
+        lastCheckupDate: String? = null
     ): RepositoryResult<UserDto> {
-        val currentUser = SessionStore.user.value ?: UserDto(
-            id = "BP2024",
-            email = email,
-            name = name,
-            avatarUrl = null,
-            dateOfBirth = null,
-            gender = gender.ifBlank { null },
-            weight = weight.ifBlank { null },
-            height = height.ifBlank { null },
-            bloodType = null,
-            emergencyContact = null
-        )
+        val token = SessionStore.token.value 
+            ?: return RepositoryResult.Error("No active session. Please sign in first.")
 
-        val updatedUser = currentUser.copy(
-            name = name,
-            email = email,
-            gender = gender.ifBlank { currentUser.gender },
-            weight = weight.ifBlank { currentUser.weight },
-            height = height.ifBlank { currentUser.height }
-        )
+        return runCatching {
+            val request = com.example.finalapp.data.model.ProfileUpdateRequest(
+                name = name,
+                email = email,
+                gender = gender.ifBlank { null },
+                weight = weight.ifBlank { null },
+                height = height.ifBlank { null },
+                lastCheckupDate = lastCheckupDate
+            )
+            apiService.updateProfile("Bearer $token", request)
+        }.fold(
+            onSuccess = { response ->
+                val body = response.body()
+                val updatedUser = body?.user
 
-        SessionStore.updateUser(updatedUser)
-        return RepositoryResult.Success(updatedUser)
+                if (response.isSuccessful && updatedUser != null) {
+                    SessionStore.updateUser(updatedUser)
+                    RepositoryResult.Success(updatedUser)
+                } else {
+                    RepositoryResult.Error(body?.message ?: "Failed to save profile.")
+                }
+            },
+            onFailure = {
+                RepositoryResult.Error(it.message ?: "Network error while saving profile.")
+            }
+        )
     }
 }

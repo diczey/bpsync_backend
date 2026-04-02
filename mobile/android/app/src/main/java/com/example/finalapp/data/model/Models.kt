@@ -15,7 +15,8 @@ data class UserDto(
     val weight: String?,
     val height: String?,
     @SerializedName("blood_type") val bloodType: String?,
-    @SerializedName("emergency_contact") val emergencyContact: String?
+    @SerializedName("emergency_contact") val emergencyContact: String?,
+    @SerializedName("last_checkup_date") val lastCheckupDate: String?
 )
 
 data class LoginResponse(val success: Boolean, val token: String?, val user: UserDto?, val message: String?)
@@ -68,3 +69,81 @@ data class BLEStatusResponse(
 )
 
 data class CommandResponse(val success: Boolean, val message: String)
+
+data class ScanResult(
+    val found: Boolean,
+    @SerializedName("device_name") val deviceName: String?,
+    @SerializedName("device_address") val deviceAddress: String?,
+    val message: String
+)
+
+// ─── Trends ───
+data class TrendDataPoint(
+    val timestamp: Long,
+    val value: Float
+)
+
+data class TrendDataDto(
+    val type: String,
+    @SerializedName("data_points") val dataPoints: List<TrendDataPoint>,
+    val average: Float,
+    val min: Float,
+    val max: Float
+)
+
+data class TrendResponse(
+    val success: Boolean,
+    val trends: List<TrendDataDto> = emptyList(),
+    val message: String?
+)
+
+// ─── Profile ───
+data class ProfileUpdateRequest(
+    val name: String? = null,
+    val email: String? = null,
+    val gender: String? = null,
+    val weight: String? = null,
+    val height: String? = null,
+    @SerializedName("last_checkup_date") val lastCheckupDate: String? = null
+)
+
+data class ProfileResponse(
+    val success: Boolean,
+    val user: UserDto?,
+    val message: String?
+)
+
+// ─── PPG Signal ───
+data class PpgDataPoint(
+    val timestamp: Long,
+    val quality: Float
+)
+
+data class PpgSignalResponse(
+    val success: Boolean,
+    @SerializedName("avg_quality") val avgQuality: Int = 0,
+    @SerializedName("signal_stability") val signalStability: Int = 0,
+    @SerializedName("highest_quality") val highestQuality: Int = 0,
+    @SerializedName("lowest_quality") val lowestQuality: Int = 0,
+    @SerializedName("chart_points") val chartPoints: List<PpgDataPoint> = emptyList(),
+    val message: String? = null
+)
+
+// ─── Pulse / ECG ───
+data class PulseDataPoint(
+    val timestamp: Long,
+    val value: Float
+)
+
+data class PulseResponse(
+    val success: Boolean,
+    @SerializedName("current_bpm") val currentBpm: Int = 0,
+    @SerializedName("resting_hr") val restingHr: Int = 0,
+    @SerializedName("min_hr") val minHr: Int = 0,
+    @SerializedName("avg_hr") val avgHr: Int = 0,
+    @SerializedName("max_hr") val maxHr: Int = 0,
+    @SerializedName("status_label") val statusLabel: String = "",
+    @SerializedName("pattern_24h") val pattern24h: List<PulseDataPoint> = emptyList(),
+    @SerializedName("ecg_waveform_points") val ecgWaveformPoints: List<Float> = emptyList(),
+    val message: String? = null
+)

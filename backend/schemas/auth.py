@@ -20,6 +20,7 @@ class UserDto(BaseModel):
     height: Optional[str] = Field(None, serialization_alias="height")
     blood_type: Optional[str] = Field(None, serialization_alias="blood_type")
     emergency_contact: Optional[str] = Field(None, serialization_alias="emergency_contact")
+    last_checkup_date: Optional[str] = Field(None, serialization_alias="last_checkup_date")
     
     class Config:
         from_attributes = True
@@ -49,6 +50,7 @@ class ProfileUpdateRequest(BaseModel):
     height: Optional[str] = Field(None, serialization_alias="height")
     blood_type: Optional[str] = Field(None, serialization_alias="blood_type")
     emergency_contact: Optional[str] = Field(None, serialization_alias="emergency_contact")
+    last_checkup_date: Optional[str] = Field(None, serialization_alias="last_checkup_date")
 
 
 class ProfileResponse(BaseModel):
