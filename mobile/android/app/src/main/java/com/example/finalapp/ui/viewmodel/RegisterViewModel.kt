@@ -5,6 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.model.RegisterRequest
 import com.example.finalapp.data.repository.AuthRepository
 import com.example.finalapp.data.repository.RepositoryResult
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
+import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,6 +53,37 @@ class RegisterViewModel(
             return
         }
 
+        val normalizedGender = normalizeGender(currentState.gender)
+        if (currentState.gender.isNotBlank() && normalizedGender == null) {
+            _uiState.update {
+                it.copy(errorMessage = "Gender must be Male, Female, or Other.")
+            }
+            return
+        }
+
+        val normalizedDateOfBirth = normalizeDateOfBirth(currentState.dateOfBirth)
+        if (currentState.dateOfBirth.isNotBlank() && normalizedDateOfBirth == null) {
+            _uiState.update {
+                it.copy(errorMessage = "Date of birth must be a valid date.")
+            }
+            return
+        }
+
+        val normalizedWeight = currentState.weight.trim().takeIf { it.isNotBlank() }
+        if (normalizedWeight != null && normalizedWeight.toFloatOrNull() == null) {
+            _uiState.update {
+                it.copy(errorMessage = "Weight must be a number.")
+            }
+            return
+        }
+
+        val normalizedHeight = currentState.height.trim().takeIf { it.isNotBlank() }
+        if (normalizedHeight != null && normalizedHeight.toIntOrNull() == null) {
+            _uiState.update {
+                it.copy(errorMessage = "Height must be a whole number.")
+            }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
@@ -56,10 +91,10 @@ class RegisterViewModel(
                 email = currentState.email.trim(),
                 password = currentState.password,
                 name = currentState.name.trim(),
-                dateOfBirth = currentState.dateOfBirth.ifBlank { null },
-                gender = currentState.gender.ifBlank { null },
-                weight = currentState.weight.ifBlank { null },
-                height = currentState.height.ifBlank { null }
+                dateOfBirth = normalizedDateOfBirth,
+                gender = normalizedGender,
+                weight = normalizedWeight,
+                height = normalizedHeight
             )
 
             when (val result = authRepository.register(request)) {
@@ -82,5 +117,36 @@ class RegisterViewModel(
 
     private fun updateField(update: (RegisterUiState) -> RegisterUiState) {
         _uiState.update(update)
+    }
+
+    private fun normalizeGender(gender: String): String? {
+        return when (gender.trim().lowercase(Locale.ROOT)) {
+            "" -> null
+            "male" -> "Male"
+            "female" -> "Female"
+            "other" -> "Other"
+            else -> null
+        }
+    }
+
+    private fun normalizeDateOfBirth(dateOfBirth: String): String? {
+        val value = dateOfBirth.trim()
+        if (value.isBlank()) return null
+
+        val formatters = listOf(
+            DateTimeFormatter.ISO_LOCAL_DATE,
+            DateTimeFormatter.ofPattern("d/M/yyyy"),
+            DateTimeFormatter.ofPattern("dd/MM/yyyy")
+        )
+
+        val parsed = formatters.firstNotNullOfOrNull { formatter ->
+            try {
+                LocalDate.parse(value, formatter)
+            } catch (_: DateTimeParseException) {
+                null
+            }
+        } ?: return null
+
+        return parsed.format(DateTimeFormatter.ISO_LOCAL_DATE)
     }
 }

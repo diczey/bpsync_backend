@@ -44,6 +44,7 @@ class LoginResponse(BaseModel):
 class ProfileUpdateRequest(BaseModel):
     """Profile update request body"""
     name: Optional[str] = None
+    email: Optional[EmailStr] = None
     date_of_birth: Optional[str] = Field(None, serialization_alias="date_of_birth")
     gender: Optional[str] = Field(None, serialization_alias="gender")
     weight: Optional[str] = Field(None, serialization_alias="weight")

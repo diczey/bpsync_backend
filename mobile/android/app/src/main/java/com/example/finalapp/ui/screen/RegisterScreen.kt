@@ -50,6 +50,7 @@ import com.example.finalapp.ui.theme.PrimaryGradient
 import com.example.finalapp.ui.theme.TextSecondary
 import com.example.finalapp.ui.viewmodel.RegisterViewModel
 import java.util.Calendar
+import java.util.Locale
 
 @Composable
 fun RegisterScreen(
@@ -63,7 +64,9 @@ fun RegisterScreen(
     val datePickerDialog = android.app.DatePickerDialog(
         context,
         { _, year, month, dayOfMonth ->
-            viewModel.updateDateOfBirth("$dayOfMonth/${month + 1}/$year")
+            viewModel.updateDateOfBirth(
+                String.format(Locale.US, "%02d/%02d/%04d", dayOfMonth, month + 1, year)
+            )
         },
         calendar.get(Calendar.YEAR),
         calendar.get(Calendar.MONTH),
@@ -168,7 +171,7 @@ fun RegisterScreen(
             GlassInput(
                 value = uiState.gender,
                 onValueChange = viewModel::updateGender,
-                placeholder = "Gender (Male/Female)",
+                placeholder = "Gender (Male/Female/Other)",
                 icon = Icons.Default.Person
             )
 

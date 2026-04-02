@@ -63,6 +63,15 @@ async def update_profile(
     # Update fields if provided
     if request.name is not None:
         current_user.name = request.name
+    if request.email is not None and request.email != current_user.email:
+        existing_user = db.query(User).filter(User.email == request.email).first()
+        if existing_user and existing_user.id != current_user.id:
+            return ProfileResponse(
+                success=False,
+                user=None,
+                message="This email address is already registered"
+            )
+        current_user.email = request.email
     if request.date_of_birth is not None:
         current_user.date_of_birth = request.date_of_birth
     if request.gender is not None:

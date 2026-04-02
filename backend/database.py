@@ -73,6 +73,7 @@ def create_sensor_tables():
     """
     with ts_engine.connect() as conn:
         conn.execute(text(ddl))
+        conn.execute(text("ALTER TABLE bp_readings ADD COLUMN IF NOT EXISTS spo2 SMALLINT"))
         conn.commit()
     print("[DB] TimescaleDB sensor tables ready.")
 
@@ -80,14 +81,22 @@ def create_sensor_tables():
 def create_tables():
     """Create all ORM-managed tables (users, notifications) and sensor tables."""
     Base.metadata.create_all(bind=pg_engine)
-    
-    # Safe migration for new columns
+
+    # Safe migrations for optional profile columns added after the first schema version.
+    user_column_migrations = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS weight VARCHAR",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS height VARCHAR",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_checkup_date VARCHAR",
+    ]
+
     try:
         with pg_engine.connect() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_checkup_date VARCHAR"))
+            for statement in user_column_migrations:
+                conn.execute(text(statement))
             conn.commit()
     except Exception as e:
-        print(f"[DB] Migration warning (last_checkup_date): {e}")
+        print(f"[DB] Migration warning (users table): {e}")
 
     try:
         create_sensor_tables()

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -140,24 +141,30 @@ fun DashboardScreen(
                         Triple("Settings", Screen.Settings, Icons.Default.Settings)
                     )
 
-                    for ((label, screen, icon) in menuItems) {
-                        NavigationDrawerItem(
-                            label = { Text(label, fontWeight = FontWeight.Bold) },
-                            selected = false,
-                            onClick = {
-                                scope.launch { drawerState.close() }
-                                navController.navigate(screen.route)
-                            },
-                            icon = { Icon(icon, contentDescription = null, tint = PrimaryBlue) },
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.padding(vertical = 4.dp),
-                            colors = NavigationDrawerItemDefaults.colors(
-                                unselectedContainerColor = Color.Transparent
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        for ((label, screen, icon) in menuItems) {
+                            NavigationDrawerItem(
+                                label = { Text(label, fontWeight = FontWeight.Bold) },
+                                selected = false,
+                                onClick = {
+                                    scope.launch { drawerState.close() }
+                                    navController.navigate(screen.route)
+                                },
+                                icon = { Icon(icon, contentDescription = null, tint = PrimaryBlue) },
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                colors = NavigationDrawerItemDefaults.colors(
+                                    unselectedContainerColor = Color.Transparent
+                                )
                             )
-                        )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     Button(
                         onClick = {
@@ -167,7 +174,10 @@ fun DashboardScreen(
                                 popUpTo(Screen.Dashboard.route) { inclusive = true }
                             }
                         },
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .height(52.dp),
                         shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = ErrorRed.copy(alpha = 0.1f))
                     ) {
@@ -192,15 +202,27 @@ fun DashboardScreen(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    IconButton(
+                        onClick = { scope.launch { drawerState.open() } },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
+                    ) {
+                        Icon(
+                            Icons.Default.Menu,
+                            contentDescription = "Menu",
+                            tint = PrimaryBlue,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
                     Column {
                         Text("BP Sync", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
                         Text("Health Monitoring", fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
-                    }
-                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = PrimaryBlue, modifier = Modifier.size(28.dp))
                     }
                 }
 

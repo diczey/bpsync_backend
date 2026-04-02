@@ -47,6 +47,6 @@ interface ApiService {
     @GET("dashboard/ppg/signal")
     suspend fun getPpgSignal(@Header("Authorization") token: String): Response<PpgSignalResponse>
 
-    @GET("pulse")
+    @GET("dashboard/pulse")
     suspend fun getPulseData(@Header("Authorization") token: String): Response<PulseResponse>
 }

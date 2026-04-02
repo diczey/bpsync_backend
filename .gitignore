@@ -42,3 +42,6 @@ desktop.ini
 # ── IDE ───────────────────────────────────────────────────────
 *.iml
 .idea/
+
+# Local Android Studio wrapper project used only for one-off testing
+mobile/FinalApp/
