@@ -92,24 +92,16 @@ async def get_trends(
                 AVG(heart_rate) AS avg_hr, MAX(heart_rate) AS max_hr, MIN(heart_rate) AS min_hr,
                 AVG(spo2) AS avg_spo2, MAX(spo2) AS max_spo2, MIN(spo2) AS min_spo2
             FROM bp_readings
-            WHERE user_id = :uid
+            WHERE (user_id = :uid OR user_id = :email)
               AND time >= NOW() - CAST(:back AS interval)
         '''),
-        {'uid': current_user.id, 'back': back_interval},
+        {'uid': current_user.id, 'email': current_user.email, 'back': back_interval},
     ).fetchone()
 
-    # If no data exists at all (avg_sys will be None)
+
     if not summary_row or summary_row.avg_sys is None:
-        from backend.config import settings
-        if settings.use_mock_data:
-            from backend.utils.mock_data import generate_trends
-            mock_trends = generate_trends(period=period)
-            return TrendResponse(
-                success=True,
-                trends=mock_trends,
-                message="Mock trend data — no real sensor readings yet."
-            )
         return TrendResponse(success=True, trends=[], message='No data for this period.')
+
 
     # 2. Fetch time-bucketed chart data points
     bucket_rows = db.execute(
@@ -121,12 +113,12 @@ async def get_trends(
                 AVG(heart_rate) AS heart_rate,
                 AVG(spo2) AS spo2
             FROM bp_readings
-            WHERE user_id = :uid
+            WHERE (user_id = :uid OR user_id = :email)
               AND time >= NOW() - CAST(:back AS interval)
             GROUP BY bucket_time
             ORDER BY bucket_time ASC
         '''),
-        {'uid': current_user.id, 'back': back_interval, 'bucket': bucket_interval},
+        {'uid': current_user.id, 'email': current_user.email, 'back': back_interval, 'bucket': bucket_interval},
     ).fetchall()
 
     points_sys, points_dia, points_hr, points_spo2 = [], [], [], []

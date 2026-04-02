@@ -84,38 +84,22 @@ async def get_dashboard_summary(
 
     Falls back to mock data when no rows exist and USE_MOCK_DATA=true.
     """
-    # Fetch the most-recent BP reading for this user
+    # Fetch the most-recent BP reading for this user.
+    # Accept both UUID (current format) and email (legacy format) as user_id
     bp_row = db.execute(
         text('''
             SELECT time, systolic, diastolic, heart_rate
             FROM bp_readings
-            WHERE user_id = :uid
+            WHERE user_id = :uid OR user_id = :email
             ORDER BY time DESC
             LIMIT 1
         '''),
-        {'uid': current_user.id},
+        {'uid': current_user.id, 'email': current_user.email},
     ).fetchone()
 
     if not bp_row:
-        # No real data yet — fall back to mock data if enabled
-        from backend.config import settings
-        if settings.use_mock_data:
-            from backend.utils.mock_data import generate_dashboard_summary
-            # Pass user_id so mock generator can be made user-specific in the future
-            mock = generate_dashboard_summary(current_user.id)
-            return DashboardResponse(
-                success=True,
-                summary=DashboardSummary(
-                    latest_systolic=mock['latest_systolic'],
-                    latest_diastolic=mock['latest_diastolic'],
-                    latest_heart_rate=mock['latest_heart_rate'],
-                    latest_spo2=mock['latest_spo2'],
-                    latest_temperature=mock['latest_temperature'],
-                    health_status=mock['health_status'],
-                    last_updated=mock['last_updated'],
-                )
-            )
-        return DashboardResponse(success=False, message='No readings yet. Start a measurement.')
+        return DashboardResponse(success=False, message='No readings yet. Connect your BPSync wristband to start measuring.')
+
 
     # Fetch the most-recent temperature from wristband raw frames.
     # wristband_data is written at 10 Hz so this is nearly real-time.
@@ -123,12 +107,12 @@ async def get_dashboard_summary(
         text('''
             SELECT temperature
             FROM wristband_data
-            WHERE user_id = :uid
+            WHERE (user_id = :uid OR user_id = :email)
               AND temperature IS NOT NULL
             ORDER BY time DESC
             LIMIT 1
         '''),
-        {'uid': current_user.id},
+        {'uid': current_user.id, 'email': current_user.email},
     ).fetchone()
 
     # SpO2: not yet derived from ppg_ir/ppg_red in the pipeline.

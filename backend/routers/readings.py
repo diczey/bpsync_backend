@@ -135,24 +135,16 @@ async def get_readings(
         text('''
             SELECT time, user_id, systolic, diastolic, heart_rate, spo2
             FROM bp_readings
-            WHERE user_id = :uid
+            WHERE user_id = :uid OR user_id = :email
             ORDER BY time DESC
             LIMIT :limit
         '''),
-        {'uid': current_user.id, 'limit': limit},
+        {'uid': current_user.id, 'email': current_user.email, 'limit': limit},
     ).fetchall()
 
     if not rows:
-        from backend.config import settings
-        if settings.use_mock_data:
-            from backend.utils.mock_data import generate_health_readings
-            mock = generate_health_readings(current_user.id, count=limit)
-            return HealthReadingsResponse(
-                success=True,
-                readings=[HealthReadingDto(**r) for r in mock],
-                message="Mock data — no real sensor readings yet."
-            )
-        return HealthReadingsResponse(success=True, readings=[], message="No readings found.")
+        return HealthReadingsResponse(success=True, readings=[], message="No readings found. Connect your BPSync wristband to start measuring.")
+
 
     return HealthReadingsResponse(
         success=True,
