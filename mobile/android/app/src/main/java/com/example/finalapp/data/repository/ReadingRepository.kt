@@ -24,6 +24,10 @@ object ReadingRepository {
     private val _readings = MutableStateFlow<List<Reading>>(emptyList())
     val readings: StateFlow<List<Reading>> = _readings.asStateFlow()
 
+    fun clear() {
+        _readings.value = emptyList()
+    }
+
     fun addReading(systolic: String, diastolic: String, pulse: String, spo2: String) {
         val sdfDate = SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault())
         val sdfTime = SimpleDateFormat("hh:mm a", Locale.getDefault())

@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from backend.database import get_sensor_db
 from backend.models.user import User
 from backend.utils.security import get_current_user
+from backend.utils.sensor_identity import sensor_user_clause, sensor_user_params
 from backend.services.ml_service import get_bp_model, predict_blood_pressure
 
 router = APIRouter()
@@ -132,15 +133,19 @@ async def get_readings(
     Falls back to mock data when no rows exist and USE_MOCK_DATA=true.
     """
     rows = db.execute(
-        text('''
+        text(f'''
             SELECT time, user_id, systolic, diastolic, heart_rate, spo2
             FROM bp_readings
-            WHERE user_id = :uid OR user_id = :email
+            WHERE {sensor_user_clause()}
             ORDER BY time DESC
             LIMIT :limit
         '''),
-        {'uid': current_user.id, 'email': current_user.email, 'limit': limit},
+        {
+            **sensor_user_params(current_user),
+            'limit': limit,
+        },
     ).fetchall()
+
 
     if not rows:
         return HealthReadingsResponse(success=True, readings=[], message="No readings found. Connect your BPSync wristband to start measuring.")

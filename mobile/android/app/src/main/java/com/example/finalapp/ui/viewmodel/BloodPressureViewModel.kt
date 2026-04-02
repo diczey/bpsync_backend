@@ -75,7 +75,7 @@ class BloodPressureViewModel(
             var diaMin = 0f; var diaMax = 1f
 
             if (trendsResult is RepositoryResult.Success) {
-                val trends = trendsResult.data
+                val trends = trendsResult.data.trends
                 val sysTrend = trends.find { it.type == "systolic" }
                 val diaTrend = trends.find { it.type == "diastolic" }
 

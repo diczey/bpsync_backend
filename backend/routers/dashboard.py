@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from backend.database import get_sensor_db
 from backend.models.user import User
 from backend.utils.security import get_current_user
+from backend.utils.sensor_identity import sensor_user_clause, sensor_user_params
 
 router = APIRouter()
 
@@ -87,14 +88,14 @@ async def get_dashboard_summary(
     # Fetch the most-recent BP reading for this user.
     # Accept both UUID (current format) and email (legacy format) as user_id
     bp_row = db.execute(
-        text('''
+        text(f'''
             SELECT time, systolic, diastolic, heart_rate
             FROM bp_readings
-            WHERE user_id = :uid OR user_id = :email
+            WHERE {sensor_user_clause()}
             ORDER BY time DESC
             LIMIT 1
         '''),
-        {'uid': current_user.id, 'email': current_user.email},
+        sensor_user_params(current_user),
     ).fetchone()
 
     if not bp_row:
@@ -104,15 +105,15 @@ async def get_dashboard_summary(
     # Fetch the most-recent temperature from wristband raw frames.
     # wristband_data is written at 10 Hz so this is nearly real-time.
     temp_row = db.execute(
-        text('''
+        text(f'''
             SELECT temperature
             FROM wristband_data
-            WHERE (user_id = :uid OR user_id = :email)
+            WHERE {sensor_user_clause()}
               AND temperature IS NOT NULL
             ORDER BY time DESC
             LIMIT 1
         '''),
-        {'uid': current_user.id, 'email': current_user.email},
+        sensor_user_params(current_user),
     ).fetchone()
 
     # SpO2: not yet derived from ppg_ir/ppg_red in the pipeline.
@@ -162,13 +163,13 @@ async def get_health_status(
     Uses the average of the last 7 days of readings to calculate a score.
     """
     rows = db.execute(
-        text('''
+        text(f'''
             SELECT systolic, diastolic, heart_rate
             FROM bp_readings
-            WHERE user_id = :uid
+            WHERE {sensor_user_clause()}
               AND time >= NOW() - INTERVAL '7 days'
         '''),
-        {'uid': current_user.id},
+        sensor_user_params(current_user),
     ).fetchall()
 
     if not rows:
@@ -263,26 +264,26 @@ async def get_pulse_data(
     """
     # 1. Get latest BPM
     latest_row = db.execute(
-        text('''
+        text(f'''
             SELECT heart_rate
             FROM bp_readings
-            WHERE user_id = :uid AND heart_rate IS NOT NULL
+            WHERE {sensor_user_clause()} AND heart_rate IS NOT NULL
             ORDER BY time DESC LIMIT 1
-        '''), {'uid': current_user.id}
+        '''), sensor_user_params(current_user)
     ).fetchone()
     current_bpm = int(latest_row.heart_rate) if latest_row and latest_row.heart_rate else 0
 
     # 2. Get 24-hour stats
     stats_row = db.execute(
-        text('''
+        text(f'''
             SELECT 
                 MIN(heart_rate) as min_hr,
                 AVG(heart_rate) as avg_hr,
                 MAX(heart_rate) as max_hr
             FROM bp_readings
-            WHERE user_id = :uid AND time >= NOW() - INTERVAL '24 hours'
+            WHERE {sensor_user_clause()} AND time >= NOW() - INTERVAL '24 hours'
               AND heart_rate IS NOT NULL
-        '''), {'uid': current_user.id}
+        '''), sensor_user_params(current_user)
     ).fetchone()
 
     min_hr = int(stats_row.min_hr) if stats_row and stats_row.min_hr else 0
@@ -303,16 +304,16 @@ async def get_pulse_data(
 
     # 3. Get 24-hour pattern (hourly buckets)
     pattern_rows = db.execute(
-        text('''
+        text(f'''
             SELECT 
                 time_bucket('1 hour', time) AS bucket_time,
                 AVG(heart_rate) AS hr
             FROM bp_readings
-            WHERE user_id = :uid AND time >= NOW() - INTERVAL '24 hours'
+            WHERE {sensor_user_clause()} AND time >= NOW() - INTERVAL '24 hours'
               AND heart_rate IS NOT NULL
             GROUP BY bucket_time
             ORDER BY bucket_time ASC
-        '''), {'uid': current_user.id}
+        '''), sensor_user_params(current_user)
     ).fetchall()
 
     pattern_24h = [
