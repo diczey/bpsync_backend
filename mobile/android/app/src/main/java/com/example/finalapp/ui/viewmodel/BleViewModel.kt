@@ -1,10 +1,11 @@
 package com.example.finalapp.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.finalapp.data.repository.BleDevice
 import com.example.finalapp.data.repository.BleRepository
 import com.example.finalapp.data.repository.RepositoryResult
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,17 +14,18 @@ import kotlinx.coroutines.launch
 
 data class BleUiState(
     val scanning: Boolean = false,
+    val connecting: Boolean = false,
     val connected: Boolean = false,
-    val selectedDevice: String? = null,
-    val devices: List<String> = emptyList(),
+    val selectedDevice: BleDevice? = null,
+    val devices: List<BleDevice> = emptyList(),
     val statusTitle: String = "Device Disconnected",
     val statusSubtitle: String = "Ensure your device is turned on",
     val errorMessage: String? = null
 )
 
-class BleViewModel(
-    private val bleRepository: BleRepository = BleRepository()
-) : ViewModel() {
+class BleViewModel(application: Application) : AndroidViewModel(application) {
+    private val bleRepository = BleRepository(application)
+
     private val _uiState = MutableStateFlow(BleUiState())
     val uiState: StateFlow<BleUiState> = _uiState.asStateFlow()
 
@@ -32,30 +34,39 @@ class BleViewModel(
     }
 
     fun refreshStatus() {
-        viewModelScope.launch {
-            when (val result = bleRepository.fetchBleStatus()) {
-                is RepositoryResult.Success -> {
-                    val status = result.data
-                    _uiState.update {
-                        it.copy(
-                            connected = status.connected,
-                            selectedDevice = status.deviceName.ifBlank { null },
-                            statusTitle = if (status.connected) {
-                                "Connected to ${status.deviceName}"
-                            } else {
-                                "Device Disconnected"
-                            },
-                            statusSubtitle = if (status.connected) {
-                                "Active and ready to sync"
-                            } else {
-                                "Ensure your device is turned on"
-                            },
-                            errorMessage = null
-                        )
-                    }
+        when (val result = bleRepository.fetchBleStatus()) {
+            is RepositoryResult.Success -> {
+                val status = result.data
+                _uiState.update {
+                    it.copy(
+                        scanning = false,
+                        connecting = false,
+                        connected = status.connected,
+                        selectedDevice = if (status.connected && status.deviceName.isNotBlank()) {
+                            BleDevice(
+                                name = status.deviceName,
+                                address = status.deviceAddress.orEmpty()
+                            )
+                        } else {
+                            null
+                        },
+                        statusTitle = when {
+                            !status.available -> "Bluetooth Unavailable"
+                            status.connected -> "Connected to ${status.deviceName}"
+                            else -> "Device Disconnected"
+                        },
+                        statusSubtitle = when {
+                            !status.available -> "Turn on Bluetooth to scan for devices"
+                            status.connected -> "Active and ready to sync"
+                            else -> "Ensure your device is turned on"
+                        },
+                        errorMessage = null
+                    )
                 }
+            }
 
-                is RepositoryResult.Error -> Unit
+            is RepositoryResult.Error -> {
+                _uiState.update { it.copy(errorMessage = result.message) }
             }
         }
     }
@@ -65,22 +76,23 @@ class BleViewModel(
             _uiState.update {
                 it.copy(
                     scanning = true,
+                    connecting = false,
                     devices = emptyList(),
                     errorMessage = null,
-                    statusTitle = "Scanning for Devices..."
+                    statusTitle = "Scanning for Devices...",
+                    statusSubtitle = "Looking for nearby BLE devices"
                 )
             }
 
-            delay(1200)
-
-            when (val result = bleRepository.scanBleDevices()) {
+            when (val result = bleRepository.scanBleDevices(getApplication())) {
                 is RepositoryResult.Success -> {
                     _uiState.update {
                         it.copy(
                             scanning = false,
                             devices = result.data,
                             statusTitle = "Device Disconnected",
-                            statusSubtitle = "Choose a device to connect"
+                            statusSubtitle = "Choose a device to connect",
+                            errorMessage = null
                         )
                     }
                 }
@@ -89,6 +101,7 @@ class BleViewModel(
                     _uiState.update {
                         it.copy(
                             scanning = false,
+                            devices = emptyList(),
                             errorMessage = result.message,
                             statusTitle = "Device Disconnected",
                             statusSubtitle = "Ensure your device is turned on"
@@ -99,53 +112,52 @@ class BleViewModel(
         }
     }
 
-    fun connectToDevice(name: String) {
-        _uiState.update {
-            it.copy(
-                connected = true,
-                selectedDevice = name,
-                devices = emptyList(),
-                statusTitle = "Connected to $name",
-                statusSubtitle = "Active and ready to sync",
-                errorMessage = null
-            )
-        }
-        // Automatically start streaming data when user selects a device
-        startStreaming()
-    }
-
-    fun startStreaming() {
+    fun connectToDevice(device: BleDevice) {
         viewModelScope.launch {
-            when (val result = bleRepository.startStreaming()) {
+            _uiState.update {
+                it.copy(
+                    connecting = true,
+                    errorMessage = null,
+                    statusTitle = "Connecting to ${device.name}",
+                    statusSubtitle = device.address
+                )
+            }
+
+            when (val result = bleRepository.connectToDevice(getApplication(), device)) {
                 is RepositoryResult.Success -> {
+                    refreshStatus()
+                }
+
+                is RepositoryResult.Error -> {
                     _uiState.update {
                         it.copy(
-                            statusSubtitle = "Streaming live data…",
-                            errorMessage = null
+                            connecting = false,
+                            connected = false,
+                            selectedDevice = null,
+                            errorMessage = result.message,
+                            statusTitle = "Connection Failed",
+                            statusSubtitle = "Choose a device to connect"
                         )
                     }
-                }
-                is RepositoryResult.Error -> {
-                    // Not critical — streaming may not be supported on the demo server
-                    _uiState.update { it.copy(statusSubtitle = "Active and ready to sync") }
                 }
             }
         }
     }
 
-    fun disconnect() {
-        viewModelScope.launch {
-            bleRepository.stopStreaming()
-        }
+    fun onPermissionsDenied() {
         _uiState.update {
             it.copy(
-                connected = false,
-                selectedDevice = null,
-                devices = emptyList(),
-                statusTitle = "Device Disconnected",
-                statusSubtitle = "Ensure your device is turned on",
-                errorMessage = null
+                scanning = false,
+                connecting = false,
+                errorMessage = "Bluetooth permission is required to scan and connect.",
+                statusTitle = "Permission Required",
+                statusSubtitle = "Allow Bluetooth access to continue"
             )
         }
+    }
+
+    fun disconnect() {
+        bleRepository.disconnect()
+        refreshStatus()
     }
 }

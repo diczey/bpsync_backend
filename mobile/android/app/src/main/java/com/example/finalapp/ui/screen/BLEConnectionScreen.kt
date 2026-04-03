@@ -1,7 +1,13 @@
 package com.example.finalapp.ui.screen
 
-import androidx.compose.foundation.background
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,28 +34,33 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.finalapp.data.repository.BleDevice
 import com.example.finalapp.ui.component.PremiumGlassCard
 import com.example.finalapp.ui.theme.BackgroundGradient
 import com.example.finalapp.ui.theme.ErrorRed
 import com.example.finalapp.ui.theme.ForegroundBlack
 import com.example.finalapp.ui.theme.PrimaryBlue
+import com.example.finalapp.ui.theme.SuccessGreen
 import com.example.finalapp.ui.theme.TextMuted
 import com.example.finalapp.ui.theme.TextSecondary
-import com.example.finalapp.ui.theme.SuccessGreen
 import com.example.finalapp.ui.viewmodel.BleViewModel
 
 @Composable
@@ -58,6 +69,33 @@ fun BLEConnectionScreen(
     viewModel: BleViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val runtimePermissions = remember { requiredBlePermissions() }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        if (runtimePermissions.all { permission -> result[permission] == true }) {
+            viewModel.scanDevices()
+        } else {
+            viewModel.onPermissionsDenied()
+        }
+    }
+
+    fun requestScan() {
+        if (hasBlePermissions(context)) {
+            viewModel.scanDevices()
+        } else {
+            permissionLauncher.launch(runtimePermissions)
+        }
+    }
+
+    fun connect(device: BleDevice) {
+        if (hasBlePermissions(context)) {
+            viewModel.connectToDevice(device)
+        } else {
+            permissionLauncher.launch(runtimePermissions)
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -83,7 +121,7 @@ fun BLEConnectionScreen(
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
                     Text("Bluetooth Connection", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text("Device pairing", fontSize = 13.sp, color = TextSecondary)
+                    Text("Real BLE device pairing", fontSize = 13.sp, color = TextSecondary)
                 }
             }
 
@@ -125,15 +163,15 @@ fun BLEConnectionScreen(
 
                     uiState.errorMessage?.let { error ->
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text(text = error, color = androidx.compose.material3.MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                        Text(text = error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
                     if (!uiState.connected) {
                         Button(
-                            onClick = viewModel::scanDevices,
-                            enabled = !uiState.scanning,
+                            onClick = ::requestScan,
+                            enabled = !uiState.scanning && !uiState.connecting,
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
@@ -174,9 +212,11 @@ fun BLEConnectionScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 for (device in uiState.devices) {
-                    DeviceItem(name = device) {
-                        viewModel.connectToDevice(device)
-                    }
+                    DeviceItem(
+                        device = device,
+                        enabled = !uiState.connecting && !uiState.scanning,
+                        onClick = { connect(device) }
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             }
@@ -185,14 +225,18 @@ fun BLEConnectionScreen(
 }
 
 @Composable
-fun DeviceItem(name: String, onClick: () -> Unit) {
+fun DeviceItem(
+    device: BleDevice,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
             .background(Color.White.copy(alpha = 0.6f))
             .border(1.dp, Color.White, RoundedCornerShape(18.dp))
-            .clickable { onClick() }
+            .clickable(enabled = enabled) { onClick() }
             .padding(16.dp)
     ) {
         Row(
@@ -203,9 +247,29 @@ fun DeviceItem(name: String, onClick: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Bluetooth, contentDescription = null, tint = PrimaryBlue, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(name, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                Column {
+                    Text(device.name, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(device.address, fontSize = 12.sp, color = TextMuted)
+                }
             }
             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextMuted)
         }
+    }
+}
+
+private fun requiredBlePermissions(): Array<String> {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT
+        )
+    } else {
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+}
+
+private fun hasBlePermissions(context: Context): Boolean {
+    return requiredBlePermissions().all { permission ->
+        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
     }
 }

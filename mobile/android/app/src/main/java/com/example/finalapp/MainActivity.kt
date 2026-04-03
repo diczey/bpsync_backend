@@ -7,12 +7,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import com.example.finalapp.data.repository.BleRepository
 import com.example.finalapp.ui.navigation.AppNavHost
 import com.example.finalapp.ui.theme.FinalAppTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BleRepository(applicationContext)
         setContent {
             FinalAppTheme {
                 // A surface container using the 'background' color from the theme
