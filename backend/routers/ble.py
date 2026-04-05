@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from ble.manager import get_ble_manager, BLEManager, WRIST_DEVICE_NAME, SCAN_TIMEOUT_S
 from backend.utils.security import get_current_user
 from backend.models.user import User
+from backend.utils.sensor_identity import canonical_sensor_user_key
 
 router = APIRouter()
 
@@ -119,8 +120,8 @@ async def start_streaming(
     if not status["connected"]:
         raise HTTPException(status_code=409, detail="Device is not connected.")
 
-    # Assign current user to DataManager so bp_readings are written with correct user_id
-    ble._dm.set_user_id(current_user.id)
+    # Use email as the stable sensor owner key so historical and new rows stay grouped.
+    ble._dm.set_user_id(canonical_sensor_user_key(current_user))
 
     # Set user age for ML inference directly from user's age property
     ble._dm.set_user_age(current_user.age)

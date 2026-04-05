@@ -5,6 +5,7 @@ from typing import Callable, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ble.frame import BLEFrame, FrameProcessResult
+from backend.utils.sensor_identity import resolve_user_by_sensor_key
 
 logger = logging.getLogger(__name__)
 WINDOW_SIZE = 100
@@ -19,7 +20,7 @@ class DataManager:
         self._frames_failed = 0
         self._bp_inferences = 0
         self._window = deque(maxlen=WINDOW_SIZE)
-        logger.info('DataManager initialized (user_id=%s)', default_user_id)
+        logger.info('DataManager initialized (sensor_owner_key=%s)', default_user_id)
 
     async def process_frame(self, json_str, user_id=None):
         uid = user_id or self._default_user_id
@@ -52,7 +53,7 @@ class DataManager:
 
     def set_user_id(self, user_id):
         self._default_user_id = user_id
-        logger.info('DataManager: active user_id=%s', user_id)
+        logger.info('DataManager: active sensor owner key=%s', user_id)
 
     def set_user_age(self, age):
         self._user_age = age
@@ -101,20 +102,15 @@ class DataManager:
             return
         db = self._db_factory()
         
-        # Read real user age from postgresql db if available
+        # Read real user age from PostgreSQL using either UUID or email-based sensor key.
         user_age = self._user_age
         try:
-            from backend.models.user import User
-            # using the same session but be careful if db_factory returns timescale db
-            # Assuming db_factory returns postgres for user metadata or we need to query user differently.
-            # wait, db_factory here provides connection to TimescaleDB mostly for sensor data.
-            # Let's import get_db and SessionLocal for User query
-            from backend.database import SessionLocal
-            with SessionLocal() as pg_db:
-                user_record = pg_db.query(User).filter(User.id == user_id).first()
+            from backend.database import UserSessionLocal
+
+            with UserSessionLocal() as pg_db:
+                user_record = resolve_user_by_sensor_key(pg_db, user_id)
                 if user_record:
                     user_age = user_record.age
-                    # Update cache for next runs
                     self._user_age = user_age
         except Exception as e:
             logger.warning(f"Could not fetch user age, using default {user_age}: {e}")

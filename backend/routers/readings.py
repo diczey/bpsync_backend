@@ -16,7 +16,11 @@ from datetime import datetime, timezone
 from backend.database import get_sensor_db
 from backend.models.user import User
 from backend.utils.security import get_current_user
-from backend.utils.sensor_identity import sensor_user_clause, sensor_user_params
+from backend.utils.sensor_identity import (
+    canonical_sensor_user_key,
+    sensor_user_clause,
+    sensor_user_params,
+)
 from backend.services.ml_service import get_bp_model, predict_blood_pressure
 
 router = APIRouter()
@@ -198,7 +202,7 @@ async def add_reading(
         '''),
         {
             'time': reading_time,
-            'uid':  current_user.id,
+            'uid':  canonical_sensor_user_key(current_user),
             'sys':  systolic or None,
             'dia':  diastolic or None,
             'hr':   request.heart_rate,
@@ -210,8 +214,8 @@ async def add_reading(
 
     # Return the saved reading in the same DTO format as GET /readings
     saved = HealthReadingDto(
-        id=f"{current_user.id}-{request.timestamp}",
-        user_id=current_user.id,
+        id=f"{canonical_sensor_user_key(current_user)}-{request.timestamp}",
+        user_id=canonical_sensor_user_key(current_user),
         timestamp=request.timestamp,
         heart_rate=request.heart_rate,
         systolic_bp=request.systolic_bp,

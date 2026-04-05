@@ -50,6 +50,11 @@ class DashboardViewModel(
             hydrateFromLocalReading()
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
+            when (ReadingRepository.syncFromApi()) {
+                is RepositoryResult.Success -> hydrateFromLocalReading()
+                is RepositoryResult.Error -> Unit
+            }
+
             when (val dashboardResult = dashboardRepository.fetchDashboardSummary()) {
                 is RepositoryResult.Success -> {
                     val summary = dashboardResult.data
@@ -99,27 +104,7 @@ class DashboardViewModel(
     }
 
     fun showLatestMeasurement() {
-        val systolic = (110..135).random().toString()
-        val diastolic = (70..90).random().toString()
-        val pulse = (65..85).random().toString()
-        val spo2 = (95..99).random().toString()
-
-        ReadingRepository.addReading(
-            systolic = systolic,
-            diastolic = diastolic,
-            pulse = pulse,
-            spo2 = spo2
-        )
-
-        _uiState.update {
-            it.copy(
-                systolic = systolic,
-                diastolic = diastolic,
-                pulse = pulse,
-                spo2 = spo2,
-                errorMessage = null
-            )
-        }
+        refreshDashboard()
     }
 
     fun logout() {

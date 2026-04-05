@@ -73,9 +73,70 @@ def create_sensor_tables():
     """
     with ts_engine.connect() as conn:
         conn.execute(text(ddl))
+        conn.execute(text("ALTER TABLE wristband_data ALTER COLUMN user_id TYPE VARCHAR(255)"))
+        conn.execute(text("ALTER TABLE ecg_data ALTER COLUMN user_id TYPE VARCHAR(255)"))
+        conn.execute(text("ALTER TABLE bp_readings ALTER COLUMN user_id TYPE VARCHAR(255)"))
         conn.execute(text("ALTER TABLE bp_readings ADD COLUMN IF NOT EXISTS spo2 SMALLINT"))
         conn.commit()
     print("[DB] TimescaleDB sensor tables ready.")
+
+
+def normalize_sensor_user_keys():
+    """
+    Consolidate sensor rows onto canonical email-based owner keys.
+
+    Older app versions wrote Timescale rows with PostgreSQL user UUIDs. We now
+    normalize those rows to the user's email so future reads and writes use one
+    stable identifier across environments.
+    """
+    try:
+        with pg_engine.connect() as pg_conn:
+            users = pg_conn.execute(
+                text("SELECT id, email FROM users WHERE email IS NOT NULL")
+            ).fetchall()
+    except Exception as e:
+        print(f"[DB] Sensor owner normalization skipped (users query failed): {e}")
+        return
+
+    table_names = ("wristband_data", "ecg_data", "bp_readings")
+    updates = 0
+
+    try:
+        with ts_engine.connect() as ts_conn:
+            for user in users:
+                normalized_email = (user.email or "").strip().lower()
+                if not normalized_email:
+                    continue
+
+                for table_name in table_names:
+                    result_by_id = ts_conn.execute(
+                        text(f"""
+                            UPDATE {table_name}
+                            SET user_id = :normalized_email
+                            WHERE user_id = :legacy_user_id
+                        """),
+                        {
+                            "normalized_email": normalized_email,
+                            "legacy_user_id": user.id,
+                        },
+                    )
+                    result_by_email = ts_conn.execute(
+                        text(f"""
+                            UPDATE {table_name}
+                            SET user_id = :normalized_email
+                            WHERE LOWER(user_id) = :normalized_email
+                              AND user_id <> :normalized_email
+                        """),
+                        {"normalized_email": normalized_email},
+                    )
+                    updates += (result_by_id.rowcount or 0) + (result_by_email.rowcount or 0)
+
+            ts_conn.commit()
+    except Exception as e:
+        print(f"[DB] Sensor owner normalization skipped (sensor update failed): {e}")
+        return
+
+    print(f"[DB] Sensor owner normalization complete. Updated rows: {updates}")
 
 
 def create_tables():
@@ -103,6 +164,11 @@ def create_tables():
     except Exception as e:
         # Log but don't crash — sensor tables may already exist or extension unavailable
         print(f"[DB] Sensor table init warning: {e}")
+
+    try:
+        normalize_sensor_user_keys()
+    except Exception as e:
+        print(f"[DB] Sensor owner normalization warning: {e}")
 
 
 # --- TimescaleDB (sensor time-series) ---
