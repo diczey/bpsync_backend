@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.repository.AuthRepository
 import com.example.finalapp.data.repository.RepositoryResult
+import com.example.finalapp.data.repository.SettingsStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +25,10 @@ class LoginViewModel(
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
+    private fun t(english: String, turkish: String): String {
+        return if (SettingsStore.settings.value.language == "tr") turkish else english
+    }
+
     fun updateEmail(email: String) {
         _uiState.update { it.copy(email = email, errorMessage = null) }
     }
@@ -37,7 +42,9 @@ class LoginViewModel(
         if (currentState.isLoading) return
 
         if (currentState.email.isBlank() || currentState.password.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Email and password are required.") }
+            _uiState.update {
+                it.copy(errorMessage = t("Email and password are required.", "E-posta ve şifre zorunludur."))
+            }
             return
         }
 

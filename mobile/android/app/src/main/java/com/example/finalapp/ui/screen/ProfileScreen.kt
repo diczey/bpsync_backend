@@ -46,6 +46,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.finalapp.ui.localization.rememberIsTurkish
+import com.example.finalapp.ui.localization.translateGender
+import com.example.finalapp.ui.localization.translateMessage
 import com.example.finalapp.ui.component.PremiumGlassCard
 import com.example.finalapp.ui.theme.BackgroundGradient
 import com.example.finalapp.ui.theme.ForegroundBlack
@@ -64,6 +67,9 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isTurkish = rememberIsTurkish()
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
 
     Box(
         modifier = Modifier
@@ -88,7 +94,7 @@ fun ProfileScreen(
                         .size(44.dp)
                         .background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
                 ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = PrimaryBlue)
+                    Icon(Icons.Default.ArrowBack, contentDescription = t("Back", "Geri"), tint = PrimaryBlue)
                 }
 
                 IconButton(
@@ -102,7 +108,7 @@ fun ProfileScreen(
                 ) {
                     Icon(
                         if (uiState.isEditing) Icons.Default.Save else Icons.Default.Edit,
-                        contentDescription = "Edit",
+                        contentDescription = t("Edit", "Düzenle"),
                         tint = if (uiState.isEditing) Color.White else PrimaryBlue
                     )
                 }
@@ -112,7 +118,7 @@ fun ProfileScreen(
 
             uiState.message?.let { message ->
                 Text(
-                    text = message,
+                    text = translateMessage(message, isTurkish),
                     color = if (uiState.isLoading) TextSecondary else MaterialTheme.colorScheme.error,
                     fontSize = 13.sp,
                     modifier = Modifier.fillMaxWidth()
@@ -157,7 +163,7 @@ fun ProfileScreen(
                     }
 
                     Text(
-                        "Health ID: ${uiState.healthId}",
+                        "${t("Health ID", "Sağlık ID")}: ${uiState.healthId}",
                         fontSize = 13.sp,
                         color = TextSecondary,
                         fontWeight = FontWeight.Medium
@@ -170,7 +176,7 @@ fun ProfileScreen(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 EditableProfileStatItem(
                     modifier = Modifier.weight(1f),
-                    label = "Birth Date",
+                    label = t("Birth Date", "Doğum Tarihi"),
                     value = uiState.dateOfBirth,
                     onValueChange = viewModel::updateDateOfBirth,
                     icon = Icons.Default.CalendarToday,
@@ -181,7 +187,7 @@ fun ProfileScreen(
                 )
                 EditableProfileStatItem(
                     modifier = Modifier.weight(1f),
-                    label = "Age",
+                    label = t("Age", "Yaş"),
                     value = uiState.age,
                     onValueChange = {},
                     icon = Icons.Default.CalendarToday,
@@ -195,8 +201,8 @@ fun ProfileScreen(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 EditableProfileStatItem(
                     modifier = Modifier.weight(1f),
-                    label = "Gender",
-                    value = uiState.gender,
+                    label = t("Gender", "Cinsiyet"),
+                    value = if (uiState.isEditing) uiState.gender else translateGender(uiState.gender, isTurkish),
                     onValueChange = viewModel::updateGender,
                     icon = Icons.Default.Person,
                     color = PurpleMain,
@@ -204,7 +210,7 @@ fun ProfileScreen(
                 )
                 EditableProfileStatItem(
                     modifier = Modifier.weight(1f),
-                    label = "Weight (kg)",
+                    label = t("Weight (kg)", "Kilo (kg)"),
                     value = uiState.weight,
                     onValueChange = viewModel::updateWeight,
                     icon = Icons.Default.Scale,
@@ -217,7 +223,7 @@ fun ProfileScreen(
 
             EditableProfileStatItem(
                 modifier = Modifier.fillMaxWidth(),
-                label = "Height (cm)",
+                label = t("Height (cm)", "Boy (cm)"),
                 value = uiState.height,
                 onValueChange = viewModel::updateHeight,
                 icon = Icons.Default.Straighten,
@@ -229,14 +235,14 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             EditableInfoBlock(
-                label = "Email",
+                label = t("Email", "E-posta"),
                 value = uiState.email,
                 onValueChange = viewModel::updateEmail,
                 icon = Icons.Default.Email,
                 isEditing = uiState.isEditing
             )
             EditableInfoBlock(
-                label = "Phone",
+                label = t("Phone", "Telefon"),
                 value = "+1 234 567 8900",
                 onValueChange = {},
                 icon = Icons.Default.Phone,

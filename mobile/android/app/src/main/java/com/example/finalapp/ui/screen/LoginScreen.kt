@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.finalapp.ui.localization.rememberIsTurkish
+import com.example.finalapp.ui.localization.translateMessage
 import com.example.finalapp.ui.navigation.Screen
 import com.example.finalapp.ui.theme.BackgroundGradient
 import com.example.finalapp.ui.theme.ForegroundBlack
@@ -60,6 +62,9 @@ fun LoginScreen(
     viewModel: LoginViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isTurkish = rememberIsTurkish()
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
 
     LaunchedEffect(uiState.isAuthenticated) {
         if (uiState.isAuthenticated) {
@@ -114,7 +119,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(20.dp))
             Text("BP Sync", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
             Text(
-                "Health Monitoring System",
+                t("Health Monitoring System", "Sağlık Takip Sistemi"),
                 fontSize = 15.sp,
                 color = TextSecondary,
                 fontWeight = FontWeight.Medium
@@ -125,7 +130,7 @@ fun LoginScreen(
             LoginGlassInput(
                 value = uiState.email,
                 onValueChange = viewModel::updateEmail,
-                placeholder = "Email Address",
+                placeholder = t("Email Address", "E-posta Adresi"),
                 icon = Icons.Default.Email
             )
 
@@ -134,7 +139,7 @@ fun LoginScreen(
             LoginGlassInput(
                 value = uiState.password,
                 onValueChange = viewModel::updatePassword,
-                placeholder = "Password",
+                placeholder = t("Password", "Şifre"),
                 icon = Icons.Default.Lock,
                 isPassword = true
             )
@@ -143,7 +148,7 @@ fun LoginScreen(
 
             uiState.errorMessage?.let { error ->
                 Text(
-                    text = error,
+                    text = translateMessage(error, isTurkish),
                     color = androidx.compose.material3.MaterialTheme.colorScheme.error,
                     fontSize = 13.sp,
                     modifier = Modifier.fillMaxWidth()
@@ -167,17 +172,17 @@ fun LoginScreen(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text("Sign In", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(t("Sign In", "Giriş Yap"), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Don't have an account? ", color = TextSecondary, fontSize = 14.sp)
+                Text(t("Don't have an account? ", "Hesabın yok mu? "), color = TextSecondary, fontSize = 14.sp)
                 TextButton(onClick = { navController.navigate(Screen.Register.route) }) {
                     Text(
-                        "Register",
+                        t("Register", "Kayıt Ol"),
                         color = PrimaryBlue,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp
@@ -187,7 +192,7 @@ fun LoginScreen(
         }
 
         Text(
-            "Medical Device Certified • HIPAA Compliant",
+            t("Medical Device Certified • HIPAA Compliant", "Tıbbi Cihaz Sertifikalı • HIPAA Uyumlu"),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 24.dp),

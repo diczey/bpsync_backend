@@ -38,6 +38,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.finalapp.data.model.NotificationDto
 import com.example.finalapp.ui.component.GlassCard
+import com.example.finalapp.ui.localization.rememberIsTurkish
+import com.example.finalapp.ui.localization.translateNotificationType
 import com.example.finalapp.ui.theme.BackgroundGradient
 import com.example.finalapp.ui.theme.ForegroundBlack
 import com.example.finalapp.ui.theme.PrimaryBlue
@@ -55,6 +57,9 @@ fun NotificationsScreen(
     viewModel: NotificationsViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isTurkish = rememberIsTurkish()
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
 
     Box(
         modifier = Modifier
@@ -78,11 +83,15 @@ fun NotificationsScreen(
                 }
                 Spacer(modifier = Modifier.size(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Notifications", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text("${uiState.unreadCount} unread", fontSize = 12.sp, color = TextSecondary)
+                    Text(t("Notifications", "Bildirimler"), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(
+                        if (isTurkish) "${uiState.unreadCount} okunmadı" else "${uiState.unreadCount} unread",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
                 }
                 TextButton(onClick = viewModel::markAllAsRead) {
-                    Text("Mark all read", fontWeight = FontWeight.Bold, color = PrimaryBlue)
+                    Text(t("Mark all read", "Tümünü okundu yap"), fontWeight = FontWeight.Bold, color = PrimaryBlue)
                 }
             }
 
@@ -95,12 +104,12 @@ fun NotificationsScreen(
                 FilterChip(
                     selected = !uiState.unreadOnly,
                     onClick = { viewModel.toggleUnreadOnly(false) },
-                    label = { Text("All") }
+                    label = { Text(t("All", "Tümü")) }
                 )
                 FilterChip(
                     selected = uiState.unreadOnly,
                     onClick = { viewModel.toggleUnreadOnly(true) },
-                    label = { Text("Unread") }
+                    label = { Text(t("Unread", "Okunmamış")) }
                 )
             }
 
@@ -112,14 +121,21 @@ fun NotificationsScreen(
             }
 
             uiState.message?.let { message ->
-                Text(message, color = TextSecondary, fontSize = 12.sp)
+                Text(
+                    text = when {
+                        isTurkish && message == "No notifications yet." -> "Henüz bildirim yok."
+                        else -> message
+                    },
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
             if (uiState.notifications.isEmpty() && !uiState.isLoading) {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = "Your notification inbox is empty.",
+                        text = t("Your notification inbox is empty.", "Bildirim kutunuz şu anda boş."),
                         color = TextSecondary,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(20.dp)
@@ -129,6 +145,7 @@ fun NotificationsScreen(
                 uiState.notifications.forEach { notification ->
                     NotificationCard(
                         notification = notification,
+                        isTurkish = isTurkish,
                         onMarkRead = { viewModel.markAsRead(notification.id) },
                         onDelete = { viewModel.deleteNotification(notification.id) }
                     )
@@ -142,9 +159,12 @@ fun NotificationsScreen(
 @Composable
 private fun NotificationCard(
     notification: NotificationDto,
+    isTurkish: Boolean,
     onMarkRead: () -> Unit,
     onDelete: () -> Unit
 ) {
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
+
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -171,7 +191,7 @@ private fun NotificationCard(
                     Spacer(modifier = Modifier.size(12.dp))
                     Column {
                         Text(notification.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                        Text(notification.type.replaceFirstChar { it.titlecase() }, fontSize = 11.sp, color = TextMuted)
+                        Text(translateNotificationType(notification.type, isTurkish), fontSize = 11.sp, color = TextMuted)
                     }
                 }
 
@@ -194,13 +214,13 @@ private fun NotificationCard(
                     TextButton(onClick = onMarkRead) {
                         Icon(Icons.Default.Done, contentDescription = null, tint = PrimaryBlue)
                         Spacer(modifier = Modifier.size(6.dp))
-                        Text("Read", color = PrimaryBlue, fontWeight = FontWeight.Bold)
+                        Text(t("Read", "Oku"), color = PrimaryBlue, fontWeight = FontWeight.Bold)
                     }
                 }
                 TextButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                     Spacer(modifier = Modifier.size(6.dp))
-                    Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                    Text(t("Delete", "Sil"), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 }
             }
         }

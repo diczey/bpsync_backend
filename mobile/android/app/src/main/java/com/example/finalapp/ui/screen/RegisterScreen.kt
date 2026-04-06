@@ -40,6 +40,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.finalapp.ui.localization.rememberIsTurkish
+import com.example.finalapp.ui.localization.translateMessage
 import androidx.navigation.NavController
 import com.example.finalapp.ui.component.GlassInput
 import com.example.finalapp.ui.navigation.Screen
@@ -60,6 +62,9 @@ fun RegisterScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     val calendar = Calendar.getInstance()
+    val isTurkish = rememberIsTurkish()
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
 
     val datePickerDialog = android.app.DatePickerDialog(
         context,
@@ -112,8 +117,8 @@ fun RegisterScreen(
             }
 
             Spacer(modifier = Modifier.height(20.dp))
-            Text("Create Account", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-            Text("Join BP Sync today", fontSize = 14.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+            Text(t("Create Account", "Hesap Oluştur"), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+            Text(t("Join BP Sync today", "Bugün BP Sync'e katıl"), fontSize = 14.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -124,19 +129,19 @@ fun RegisterScreen(
                 GlassInput(
                     value = uiState.name,
                     onValueChange = viewModel::updateName,
-                    placeholder = "Full Name",
+                    placeholder = t("Full Name", "Ad Soyad"),
                     icon = Icons.Default.Person
                 )
                 GlassInput(
                     value = uiState.email,
                     onValueChange = viewModel::updateEmail,
-                    placeholder = "Email Address",
+                    placeholder = t("Email Address", "E-posta Adresi"),
                     icon = Icons.Default.Email
                 )
                 GlassInput(
                     value = uiState.password,
                     onValueChange = viewModel::updatePassword,
-                    placeholder = "Password",
+                    placeholder = t("Password", "Şifre"),
                     icon = Icons.Default.Lock,
                     isPassword = true
                 )
@@ -152,7 +157,7 @@ fun RegisterScreen(
                     GlassInput(
                         value = uiState.weight,
                         onValueChange = viewModel::updateWeight,
-                        placeholder = "Weight (kg)",
+                        placeholder = t("Weight (kg)", "Kilo (kg)"),
                         icon = Icons.Default.Scale
                     )
                 }
@@ -160,7 +165,7 @@ fun RegisterScreen(
                     GlassInput(
                         value = uiState.height,
                         onValueChange = viewModel::updateHeight,
-                        placeholder = "Height (cm)",
+                        placeholder = t("Height (cm)", "Boy (cm)"),
                         icon = Icons.Default.Straighten
                     )
                 }
@@ -171,7 +176,7 @@ fun RegisterScreen(
             GlassInput(
                 value = uiState.gender,
                 onValueChange = viewModel::updateGender,
-                placeholder = "Gender (Male/Female/Other)",
+                placeholder = t("Gender (Male/Female/Other)", "Cinsiyet (Erkek/Kadın/Diğer)"),
                 icon = Icons.Default.Person
             )
 
@@ -185,7 +190,7 @@ fun RegisterScreen(
                 GlassInput(
                     value = uiState.dateOfBirth,
                     onValueChange = {},
-                    placeholder = "Date of Birth (Day/Month/Year)",
+                    placeholder = t("Date of Birth (Day/Month/Year)", "Doğum Tarihi (Gün/Ay/Yıl)"),
                     icon = Icons.Default.CalendarToday,
                     enabled = false
                 )
@@ -196,7 +201,7 @@ fun RegisterScreen(
 
             uiState.errorMessage?.let { error ->
                 Text(
-                    text = error,
+                    text = translateMessage(error, isTurkish),
                     color = androidx.compose.material3.MaterialTheme.colorScheme.error,
                     fontSize = 13.sp,
                     modifier = Modifier.fillMaxWidth()
@@ -220,16 +225,16 @@ fun RegisterScreen(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text("Create Account", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(t("Create Account", "Hesap Oluştur"), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Already have an account? ", color = TextSecondary, fontSize = 14.sp)
+                Text(t("Already have an account? ", "Zaten hesabın var mı? "), color = TextSecondary, fontSize = 14.sp)
                 TextButton(onClick = { navController.popBackStack() }) {
-                    Text("Sign In", color = PrimaryBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(t("Sign In", "Giriş Yap"), color = PrimaryBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
 

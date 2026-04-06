@@ -30,6 +30,9 @@ import com.example.finalapp.ui.theme.*
 import kotlinx.coroutines.delay
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.finalapp.ui.localization.rememberIsTurkish
+import com.example.finalapp.ui.localization.translateMessage
+import com.example.finalapp.ui.localization.translateStatus
 import com.example.finalapp.ui.viewmodel.PulseViewModel
 
 @Composable
@@ -38,6 +41,9 @@ fun PulseScreen(
     viewModel: PulseViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isTurkish = rememberIsTurkish()
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
     
     Box(
         modifier = Modifier
@@ -56,12 +62,12 @@ fun PulseScreen(
                     onClick = { navController.popBackStack() },
                     modifier = Modifier.size(44.dp).background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
                 ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = ActivePink)
+                    Icon(Icons.Default.ArrowBack, contentDescription = t("Back", "Geri"), tint = ActivePink)
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
-                    Text("Heart Rate / ECG", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text("Latest backend pulse analysis", fontSize = 13.sp, color = TextSecondary)
+                    Text(t("Heart Rate / ECG", "Kalp Atışı / ECG"), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(t("Latest backend pulse analysis", "Son backend nabız analizi"), fontSize = 13.sp, color = TextSecondary)
                 }
             }
 
@@ -76,7 +82,7 @@ fun PulseScreen(
                                 Icon(Icons.Default.Favorite, contentDescription = null, tint = ActivePink)
                             }
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text("Current BPM", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                            Text(t("Current BPM", "Anlık BPM"), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
                         }
                         IconButton(
                             onClick = { viewModel.toggleMonitoring() },
@@ -105,12 +111,13 @@ fun PulseScreen(
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column {
-                            Text("Status", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Bold)
+                            Text(t("Status", "Durum"), fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Bold)
+                            val translatedStatus = translateStatus(uiState.statusLabel, isTurkish)
                             val statusColor = if (uiState.statusLabel == "Normal") SuccessGreen else if (uiState.statusLabel == "Waiting") TextMuted else ErrorRed
-                            Text(uiState.statusLabel, fontSize = 14.sp, color = statusColor, fontWeight = FontWeight.Bold)
+                            Text(translatedStatus, fontSize = 14.sp, color = statusColor, fontWeight = FontWeight.Bold)
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Text("Resting HR", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Bold)
+                            Text(t("Resting HR", "Dinlenik Nabız"), fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Bold)
                             Text(if (uiState.isLoading && uiState.restingHr == 0) "-- BPM" else "${uiState.restingHr} BPM", fontSize = 14.sp, color = ForegroundBlack, fontWeight = FontWeight.Bold)
                         }
                     }
@@ -132,9 +139,9 @@ fun PulseScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                            Icon(Icons.Default.Wifi, contentDescription = null, tint = ActivePink, modifier = Modifier.size(16.dp))
                            Spacer(modifier = Modifier.width(8.dp))
-                           Text("Waveform Preview", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                           Text(t("Waveform Preview", "Dalga Önizlemesi"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         }
-                        Text(if (uiState.isMonitoring) "Updating..." else "Paused", color = if (uiState.isMonitoring) SuccessGreen else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(if (uiState.isMonitoring) t("Updating...", "Güncelleniyor...") else t("Paused", "Duraklatıldı"), color = if (uiState.isMonitoring) SuccessGreen else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                     
                     Spacer(modifier = Modifier.height(24.dp))
@@ -143,7 +150,7 @@ fun PulseScreen(
                          ECGWaveform(points = uiState.ecgWaveformPoints)
                     } else if (!uiState.isMonitoring) {
                          Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                             Text("Monitoring Paused", color = TextMuted, fontSize = 14.sp)
+                             Text(t("Monitoring Paused", "İzleme Duraklatıldı"), color = TextMuted, fontSize = 14.sp)
                          }
                     } else {
                          Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -157,8 +164,8 @@ fun PulseScreen(
 
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = uiState.backendMessage
-                        ?: "This screen shows whatever the backend pulse service currently provides.",
+                    text = uiState.backendMessage?.let { translateMessage(it, isTurkish) }
+                        ?: t("This screen shows whatever the backend pulse service currently provides.", "Bu ekran backend nabız servisinin o anda sağladığı veriyi gösterir."),
                     fontSize = 12.sp,
                     color = TextSecondary,
                     fontWeight = FontWeight.Medium,
@@ -176,8 +183,8 @@ fun PulseScreen(
                    }
                    Spacer(modifier = Modifier.width(16.dp))
                    Column(modifier = Modifier.weight(1f)) {
-                       Text("Heart Health Tip", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                       Text("Regular cardio maintaining a healthy rate.", fontSize = 12.sp, color = TextSecondary)
+                       Text(t("Heart Health Tip", "Kalp Sağlığı İpucu"), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                       Text(t("Regular cardio maintaining a healthy rate.", "Düzenli kardiyo sağlıklı kalp ritmini destekler."), fontSize = 12.sp, color = TextSecondary)
                    }
                 }
             }

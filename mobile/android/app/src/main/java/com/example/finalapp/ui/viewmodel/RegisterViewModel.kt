@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.model.RegisterRequest
 import com.example.finalapp.data.repository.AuthRepository
 import com.example.finalapp.data.repository.RepositoryResult
+import com.example.finalapp.data.repository.SettingsStore
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -34,6 +35,10 @@ class RegisterViewModel(
     private val _uiState = MutableStateFlow(RegisterUiState())
     val uiState: StateFlow<RegisterUiState> = _uiState.asStateFlow()
 
+    private fun t(english: String, turkish: String): String {
+        return if (SettingsStore.settings.value.language == "tr") turkish else english
+    }
+
     fun updateName(name: String) = updateField { it.copy(name = name, errorMessage = null) }
     fun updateEmail(email: String) = updateField { it.copy(email = email, errorMessage = null) }
     fun updatePassword(password: String) = updateField { it.copy(password = password, errorMessage = null) }
@@ -48,7 +53,7 @@ class RegisterViewModel(
 
         if (currentState.name.isBlank() || currentState.email.isBlank() || currentState.password.isBlank()) {
             _uiState.update {
-                it.copy(errorMessage = "Name, email and password are required.")
+                it.copy(errorMessage = t("Name, email and password are required.", "Ad, e-posta ve şifre zorunludur."))
             }
             return
         }
@@ -56,7 +61,7 @@ class RegisterViewModel(
         val normalizedGender = normalizeGender(currentState.gender)
         if (currentState.gender.isNotBlank() && normalizedGender == null) {
             _uiState.update {
-                it.copy(errorMessage = "Gender must be Male, Female, or Other.")
+                it.copy(errorMessage = t("Gender must be Male, Female, or Other.", "Cinsiyet Erkek, Kadın veya Diğer olmalıdır."))
             }
             return
         }
@@ -64,7 +69,7 @@ class RegisterViewModel(
         val normalizedDateOfBirth = normalizeDateOfBirth(currentState.dateOfBirth)
         if (currentState.dateOfBirth.isNotBlank() && normalizedDateOfBirth == null) {
             _uiState.update {
-                it.copy(errorMessage = "Date of birth must be a valid date.")
+                it.copy(errorMessage = t("Date of birth must be a valid date.", "Doğum tarihi geçerli bir tarih olmalıdır."))
             }
             return
         }
@@ -72,7 +77,7 @@ class RegisterViewModel(
         val normalizedWeight = currentState.weight.trim().takeIf { it.isNotBlank() }
         if (normalizedWeight != null && normalizedWeight.toFloatOrNull() == null) {
             _uiState.update {
-                it.copy(errorMessage = "Weight must be a number.")
+                it.copy(errorMessage = t("Weight must be a number.", "Kilo sayısal bir değer olmalıdır."))
             }
             return
         }
@@ -80,7 +85,7 @@ class RegisterViewModel(
         val normalizedHeight = currentState.height.trim().takeIf { it.isNotBlank() }
         if (normalizedHeight != null && normalizedHeight.toIntOrNull() == null) {
             _uiState.update {
-                it.copy(errorMessage = "Height must be a whole number.")
+                it.copy(errorMessage = t("Height must be a whole number.", "Boy tam sayı olmalıdır."))
             }
             return
         }
@@ -125,6 +130,9 @@ class RegisterViewModel(
             "male" -> "Male"
             "female" -> "Female"
             "other" -> "Other"
+            "erkek" -> "Male"
+            "kadın", "kadin" -> "Female"
+            "diğer", "diger" -> "Other"
             else -> null
         }
     }

@@ -20,7 +20,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -33,6 +32,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DrawerValue
@@ -48,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -59,12 +61,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.example.finalapp.ui.component.ActionCard
 import com.example.finalapp.ui.component.GlassCard
 import com.example.finalapp.ui.component.PremiumGlassCard
 import com.example.finalapp.ui.component.ReadingValue
 import com.example.finalapp.ui.component.VitalRow
+import com.example.finalapp.ui.localization.rememberIsTurkish
 import com.example.finalapp.ui.navigation.Screen
 import com.example.finalapp.ui.theme.ActivePink
 import com.example.finalapp.ui.theme.BackgroundGradient
@@ -90,6 +96,20 @@ fun DashboardScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val isTurkish = rememberIsTurkish()
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshDashboard()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -99,8 +119,8 @@ fun DashboardScreen(
                 drawerShape = RoundedCornerShape(topEnd = 32.dp, bottomEnd = 32.dp)
             ) {
                 Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-                    Text("Menu", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text("Navigate your health", fontSize = 12.sp, color = TextSecondary)
+                    Text(t("Menu", "Menü"), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(t("Navigate your health", "Sağlığında gezin"), fontSize = 12.sp, color = TextSecondary)
 
                     Spacer(modifier = Modifier.height(24.dp))
 
@@ -121,7 +141,7 @@ fun DashboardScreen(
                             Column {
                                 Text(uiState.userName, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                 Text(
-                                    "Health ID: ${uiState.healthId}",
+                                    "${t("Health ID", "Sağlık ID")}: ${uiState.healthId}",
                                     fontSize = 11.sp,
                                     color = TextSecondary
                                 )
@@ -132,17 +152,15 @@ fun DashboardScreen(
                     Spacer(modifier = Modifier.height(24.dp))
 
                     val menuItems = listOf(
-                        Triple("Dashboard", Screen.Dashboard, Icons.Default.Dashboard),
-                        Triple("Health Status", Screen.HealthStatus, Icons.Default.Security),
-                        Triple("Trends", Screen.Trends, Icons.Default.ShowChart),
-                        Triple("Blood Pressure", Screen.BloodPressure, Icons.Default.Favorite),
-                        Triple("Heart Rate", Screen.Pulse, Icons.Default.FavoriteBorder),
-                        Triple("PPG Signal", Screen.PPG, Icons.Default.Wifi),
-                        Triple("Measurements", Screen.Measurements, Icons.Default.History),
-                        Triple("Notifications", Screen.Notifications, Icons.Default.Notifications),
-                        Triple("Reports", Screen.Reports, Icons.Default.Description),
-                        Triple("Profile", Screen.Profile, Icons.Default.Person),
-                        Triple("Settings", Screen.Settings, Icons.Default.Settings)
+                        Triple(t("Dashboard", "Kontrol Paneli"), Screen.Dashboard, Icons.Default.Dashboard),
+                        Triple(t("Health Status", "Sağlık Durumu"), Screen.HealthStatus, Icons.Default.Security),
+                        Triple(t("Trends", "Trendler"), Screen.Trends, Icons.Default.ShowChart),
+                        Triple(t("Blood Pressure", "Tansiyon"), Screen.BloodPressure, Icons.Default.Favorite),
+                        Triple(t("Heart Rate", "Kalp Atışı"), Screen.Pulse, Icons.Default.FavoriteBorder),
+                        Triple(t("PPG Signal", "PPG Sinyali"), Screen.PPG, Icons.Default.Wifi),
+                        Triple(t("Measurements", "Ölçümler"), Screen.Measurements, Icons.Default.History),
+                        Triple(t("Profile", "Profil"), Screen.Profile, Icons.Default.Person),
+                        Triple(t("Settings", "Ayarlar"), Screen.Settings, Icons.Default.Settings)
                     )
 
                     Column(
@@ -187,7 +205,7 @@ fun DashboardScreen(
                     ) {
                         Icon(Icons.Default.ExitToApp, contentDescription = null, tint = ErrorRed)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Logout", color = ErrorRed, fontWeight = FontWeight.Bold)
+                        Text(t("Logout", "Çıkış Yap"), color = ErrorRed, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -216,7 +234,7 @@ fun DashboardScreen(
                     ) {
                         Icon(
                             Icons.Default.Menu,
-                            contentDescription = "Menu",
+                            contentDescription = t("Menu", "Menü"),
                             tint = PrimaryBlue,
                             modifier = Modifier.size(28.dp)
                         )
@@ -224,9 +242,37 @@ fun DashboardScreen(
 
                     Spacer(modifier = Modifier.width(16.dp))
 
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text("BP Sync", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                        Text("Health Monitoring", fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                        Text(t("Health Monitoring", "Sağlık Takibi"), fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                    }
+
+                    IconButton(
+                        onClick = { navController.navigate(Screen.Notifications.route) },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
+                    ) {
+                        BadgedBox(
+                            badge = {
+                                if (uiState.unreadNotificationCount > 0) {
+                                    Badge {
+                                        Text(
+                                            text = if (uiState.unreadNotificationCount > 99) "99+" else uiState.unreadNotificationCount.toString(),
+                                            color = Color.White,
+                                            fontSize = 9.sp
+                                        )
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Notifications,
+                                contentDescription = t("Notifications", "Bildirimler"),
+                                tint = PrimaryBlue,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
                     }
                 }
 
@@ -250,7 +296,15 @@ fun DashboardScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(uiState.bleDeviceName, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                                Text(uiState.bleConnectedLabel, fontSize = 12.sp, color = TextSecondary)
+                                Text(
+                                    text = when (uiState.bleConnectedLabel) {
+                                        "Connected" -> t("Connected", "Bağlı")
+                                        "Disconnected" -> t("Disconnected", "Bağlı Değil")
+                                        else -> uiState.bleConnectedLabel
+                                    },
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
                             }
                         }
 
@@ -260,7 +314,7 @@ fun DashboardScreen(
                             shape = RoundedCornerShape(12.dp),
                             contentPadding = PaddingValues(horizontal = 16.dp)
                         ) {
-                            Text("Manage", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(t("Manage", "Yönet"), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -285,12 +339,12 @@ fun DashboardScreen(
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
-                                    Text("Blood Pressure", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                                    Text("Latest Reading", fontSize = 12.sp, color = TextSecondary)
+                                    Text(t("Blood Pressure", "Tansiyon"), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                                    Text(t("Latest Reading", "Son Ölçüm"), fontSize = 12.sp, color = TextSecondary)
                                 }
                             }
                             TextButton(onClick = { navController.navigate(Screen.BloodPressure.route) }) {
-                                Text("Details", color = PrimaryBlue, fontWeight = FontWeight.Bold)
+                                Text(t("Details", "Detaylar"), color = PrimaryBlue, fontWeight = FontWeight.Bold)
                             }
                         }
 
@@ -301,14 +355,14 @@ fun DashboardScreen(
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            ReadingValue(value = uiState.systolic, label = "Systolic")
+                            ReadingValue(value = uiState.systolic, label = t("Systolic", "Sistolik"))
                             Text(
                                 "/",
                                 fontSize = 32.sp,
                                 color = TextMuted,
                                 modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)
                             )
-                            ReadingValue(value = uiState.diastolic, label = "Diastolic")
+                            ReadingValue(value = uiState.diastolic, label = t("Diastolic", "Diyastolik"))
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))
@@ -319,7 +373,7 @@ fun DashboardScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            InfoItem(icon = Icons.Default.FavoriteBorder, text = "Pulse: ${uiState.pulse} bpm", color = ErrorRed)
+                            InfoItem(icon = Icons.Default.FavoriteBorder, text = "${t("Pulse", "Nabız")}: ${uiState.pulse} bpm", color = ErrorRed)
                             InfoItem(icon = Icons.Default.SettingsInputAntenna, text = "SpO2: ${uiState.spo2}%", color = PrimaryBlue)
                         }
                     }
@@ -344,7 +398,7 @@ fun DashboardScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
                 ) {
                     Text(
-                        if (uiState.isLoading) "Refreshing..." else "Refresh Latest Measurement",
+                        if (uiState.isLoading) t("Refreshing...", "Yenileniyor...") else t("Refresh Latest Measurement", "Son Ölçümü Yenile"),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -358,16 +412,16 @@ fun DashboardScreen(
                 ) {
                     ActionCard(
                         modifier = Modifier.weight(1f),
-                        title = "Trends",
-                        subtitle = "View History",
+                        title = t("Trends", "Trendler"),
+                        subtitle = t("View History", "Geçmişi Gör"),
                         icon = Icons.Default.ShowChart,
                         color = PurpleMain,
                         onClick = { navController.navigate(Screen.Trends.route) }
                     )
                     ActionCard(
                         modifier = Modifier.weight(1f),
-                        title = "Health Status",
-                        subtitle = "Check Status",
+                        title = t("Health Status", "Sağlık Durumu"),
+                        subtitle = t("Check Status", "Durumu Gör"),
                         icon = Icons.Default.Security,
                         color = SuccessGreen,
                         onClick = { navController.navigate(Screen.HealthStatus.route) }
@@ -377,24 +431,24 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 VitalRow(
-                    title = "PPG Signal",
-                    subtitle = "Real-time monitoring",
+                    title = t("PPG Signal", "PPG Sinyali"),
+                    subtitle = t("Real-time monitoring", "Gerçek zamanlı izleme"),
                     icon = Icons.Default.Wifi,
                     color = OrangeMain
                 ) {
                     navController.navigate(Screen.PPG.route)
                 }
                 VitalRow(
-                    title = "Heart Rate",
-                    subtitle = if (uiState.pulse == "--") "Waiting for data..." else "${uiState.pulse} bpm",
+                    title = t("Heart Rate", "Kalp Atışı"),
+                    subtitle = if (uiState.pulse == "--") t("Waiting for data...", "Veri bekleniyor...") else "${uiState.pulse} bpm",
                     icon = Icons.Default.Favorite,
                     color = ActivePink
                 ) {
                     navController.navigate(Screen.Pulse.route)
                 }
                 VitalRow(
-                    title = "All Measurements",
-                    subtitle = "View all data",
+                    title = t("All Measurements", "Tüm Ölçümler"),
+                    subtitle = t("View all data", "Tüm verileri gör"),
                     icon = Icons.Default.History,
                     color = com.example.finalapp.ui.theme.CyanMain
                 ) {

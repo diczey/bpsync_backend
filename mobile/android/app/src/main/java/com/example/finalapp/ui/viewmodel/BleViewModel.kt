@@ -6,11 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.repository.BleDevice
 import com.example.finalapp.data.repository.BleRepository
 import com.example.finalapp.data.repository.RepositoryResult
+import com.example.finalapp.ui.localization.isTurkishSelected
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 data class BleUiState(
@@ -20,8 +21,8 @@ data class BleUiState(
     val streaming: Boolean = false,
     val selectedDevice: BleDevice? = null,
     val devices: List<BleDevice> = emptyList(),
-    val statusTitle: String = "Device Disconnected",
-    val statusSubtitle: String = "Ensure your device is turned on",
+    val statusTitle: String = "",
+    val statusSubtitle: String = "",
     val framesReceived: Int = 0,
     val framesUploaded: Int = 0,
     val bufferFill: String = "0/100",
@@ -33,7 +34,16 @@ data class BleUiState(
 class BleViewModel(application: Application) : AndroidViewModel(application) {
     private val bleRepository = BleRepository(application)
 
-    private val _uiState = MutableStateFlow(BleUiState())
+    private fun t(english: String, turkish: String): String {
+        return if (isTurkishSelected()) turkish else english
+    }
+
+    private val _uiState = MutableStateFlow(
+        BleUiState(
+            statusTitle = t("Device Disconnected", "Cihaz Bağlı Değil"),
+            statusSubtitle = t("Ensure your device is turned on", "Cihazınızın açık olduğundan emin olun")
+        )
+    )
     val uiState: StateFlow<BleUiState> = _uiState.asStateFlow()
 
     init {
@@ -52,6 +62,7 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                 val measurementsReady = (dataStats["measurements_ready"] as? Number)?.toInt() ?: 0
                 val lastMeasurement = dataStats["last_measurement"]?.toString()
                 val backendError = dataStats["last_error"]?.toString()
+
                 _uiState.update {
                     it.copy(
                         scanning = false,
@@ -67,16 +78,34 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                             null
                         },
                         statusTitle = when {
-                            !status.available -> "Bluetooth Unavailable"
-                            status.connected && streaming -> "Streaming from ${status.deviceName}"
-                            status.connected -> "Connected to ${status.deviceName}"
-                            else -> "Device Disconnected"
+                            !status.available -> t("Bluetooth Unavailable", "Bluetooth Kullanılamıyor")
+                            status.connected && streaming -> t(
+                                "Streaming from ${status.deviceName}",
+                                "${status.deviceName} cihazından veri alınıyor"
+                            )
+                            status.connected -> t(
+                                "Connected to ${status.deviceName}",
+                                "${status.deviceName} cihazına bağlandı"
+                            )
+                            else -> t("Device Disconnected", "Cihaz Bağlı Değil")
                         },
                         statusSubtitle = when {
-                            !status.available -> "Turn on Bluetooth to scan for devices"
-                            status.connected && streaming -> "Frames: $framesReceived • Uploaded: $framesUploaded"
-                            status.connected -> "Configuring notifications and sync"
-                            else -> "Ensure your device is turned on"
+                            !status.available -> t(
+                                "Turn on Bluetooth to scan for devices",
+                                "Cihazları taramak için Bluetooth'u aç"
+                            )
+                            status.connected && streaming -> t(
+                                "Frames: $framesReceived | Uploaded: $framesUploaded",
+                                "Alınan kare: $framesReceived | Gönderilen: $framesUploaded"
+                            )
+                            status.connected -> t(
+                                "Configuring notifications and sync",
+                                "Bildirim ve senkronizasyon ayarlanıyor"
+                            )
+                            else -> t(
+                                "Ensure your device is turned on",
+                                "Cihazınızın açık olduğundan emin olun"
+                            )
                         },
                         framesReceived = framesReceived,
                         framesUploaded = framesUploaded,
@@ -102,8 +131,11 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                     connecting = false,
                     devices = emptyList(),
                     errorMessage = null,
-                    statusTitle = "Scanning for Devices...",
-                    statusSubtitle = "Looking for nearby BLE devices"
+                    statusTitle = t("Scanning for Devices...", "Cihazlar Taranıyor..."),
+                    statusSubtitle = t(
+                        "Looking for nearby BLE devices",
+                        "Yakın BLE cihazları aranıyor"
+                    )
                 )
             }
 
@@ -113,8 +145,11 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                         it.copy(
                             scanning = false,
                             devices = result.data,
-                            statusTitle = "Device Disconnected",
-                            statusSubtitle = "Choose a device to connect",
+                            statusTitle = t("Device Disconnected", "Cihaz Bağlı Değil"),
+                            statusSubtitle = t(
+                                "Choose a device to connect",
+                                "Bağlanmak için bir cihaz seç"
+                            ),
                             errorMessage = null
                         )
                     }
@@ -126,8 +161,11 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                             scanning = false,
                             devices = emptyList(),
                             errorMessage = result.message,
-                            statusTitle = "Device Disconnected",
-                            statusSubtitle = "Ensure your device is turned on"
+                            statusTitle = t("Device Disconnected", "Cihaz Bağlı Değil"),
+                            statusSubtitle = t(
+                                "Ensure your device is turned on",
+                                "Cihazınızın açık olduğundan emin olun"
+                            )
                         )
                     }
                 }
@@ -141,15 +179,16 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(
                     connecting = true,
                     errorMessage = null,
-                    statusTitle = "Connecting to ${device.name}",
+                    statusTitle = t(
+                        "Connecting to ${device.name}",
+                        "${device.name} cihazına bağlanılıyor"
+                    ),
                     statusSubtitle = device.address
                 )
             }
 
             when (val result = bleRepository.connectToDevice(getApplication(), device)) {
-                is RepositoryResult.Success -> {
-                    refreshStatus()
-                }
+                is RepositoryResult.Success -> refreshStatus()
 
                 is RepositoryResult.Error -> {
                     _uiState.update {
@@ -158,8 +197,11 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                             connected = false,
                             selectedDevice = null,
                             errorMessage = result.message,
-                            statusTitle = "Connection Failed",
-                            statusSubtitle = "Choose a device to connect"
+                            statusTitle = t("Connection Failed", "Bağlantı Başarısız"),
+                            statusSubtitle = t(
+                                "Choose a device to connect",
+                                "Bağlanmak için bir cihaz seç"
+                            )
                         )
                     }
                 }
@@ -172,9 +214,15 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 scanning = false,
                 connecting = false,
-                errorMessage = "Bluetooth permission is required to scan and connect.",
-                statusTitle = "Permission Required",
-                statusSubtitle = "Allow Bluetooth access to continue"
+                errorMessage = t(
+                    "Bluetooth permission is required to scan and connect.",
+                    "Tarama ve bağlantı için Bluetooth izni gereklidir."
+                ),
+                statusTitle = t("Permission Required", "İzin Gerekli"),
+                statusSubtitle = t(
+                    "Allow Bluetooth access to continue",
+                    "Devam etmek için Bluetooth erişimine izin ver"
+                )
             )
         }
     }

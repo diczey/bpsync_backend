@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.finalapp.ui.localization.rememberIsTurkish
+import com.example.finalapp.ui.localization.translateStatus
 import com.example.finalapp.ui.theme.BackgroundGradient
 import com.example.finalapp.ui.theme.ForegroundBlack
 import com.example.finalapp.ui.theme.OrangeMain
@@ -46,6 +48,9 @@ fun MeasurementsScreen(
     viewModel: MeasurementsViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isTurkish = rememberIsTurkish()
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
 
     Box(
         modifier = Modifier
@@ -68,8 +73,8 @@ fun MeasurementsScreen(
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
-                    Text("All Measurements", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text("Complete history", fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                    Text(t("All Measurements", "Tüm Ölçümler"), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(t("Complete history", "Tüm geçmiş"), fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
                 }
             }
 
@@ -79,9 +84,9 @@ fun MeasurementsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                SummaryItem(modifier = Modifier.weight(1f), label = "Total", value = uiState.totalCount.toString(), color = PrimaryBlue)
-                SummaryItem(modifier = Modifier.weight(1f), label = "Normal", value = uiState.normalCount.toString(), color = SuccessGreen)
-                SummaryItem(modifier = Modifier.weight(1f), label = "Alert", value = uiState.alertCount.toString(), color = OrangeMain)
+                SummaryItem(modifier = Modifier.weight(1f), label = t("Total", "Toplam"), value = uiState.totalCount.toString(), color = PrimaryBlue)
+                SummaryItem(modifier = Modifier.weight(1f), label = t("Normal", "Normal"), value = uiState.normalCount.toString(), color = SuccessGreen)
+                SummaryItem(modifier = Modifier.weight(1f), label = t("Alert", "Uyarı"), value = uiState.alertCount.toString(), color = OrangeMain)
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -93,11 +98,11 @@ fun MeasurementsScreen(
 
             if (uiState.isLoading && uiState.readings.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    Text("Loading measurements...", color = TextMuted, fontWeight = FontWeight.Bold)
+                    Text(t("Loading measurements...", "Ölçümler yükleniyor..."), color = TextMuted, fontWeight = FontWeight.Bold)
                 }
             } else if (uiState.readings.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    Text("No measurements yet. Start on Dashboard!", color = TextMuted, fontWeight = FontWeight.Bold)
+                    Text(t("No measurements yet. Start on Dashboard!", "Henüz ölçüm yok. Kontrol panelinden başla!"), color = TextMuted, fontWeight = FontWeight.Bold)
                 }
             } else {
                 LazyColumn(
@@ -111,7 +116,8 @@ fun MeasurementsScreen(
                             systolic = reading.systolic,
                             diastolic = reading.diastolic,
                             pulse = reading.pulse,
-                            status = reading.status
+                            status = translateStatus(reading.status, isTurkish),
+                            isTurkish = isTurkish
                         )
                     }
                 }
@@ -136,7 +142,7 @@ fun SummaryItem(modifier: Modifier, label: String, value: String, color: Color) 
 }
 
 @Composable
-fun MeasurementCard(date: String, time: String, systolic: String, diastolic: String, pulse: String, status: String) {
+fun MeasurementCard(date: String, time: String, systolic: String, diastolic: String, pulse: String, status: String, isTurkish: Boolean) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -171,14 +177,14 @@ fun MeasurementCard(date: String, time: String, systolic: String, diastolic: Str
                 Box(
                     modifier = Modifier
                         .background(
-                            if (status == "Normal") SuccessGreen.copy(alpha = 0.1f) else OrangeMain.copy(alpha = 0.1f),
+                            if (status == (if (isTurkish) "Normal" else "Normal")) SuccessGreen.copy(alpha = 0.1f) else OrangeMain.copy(alpha = 0.1f),
                             RoundedCornerShape(12.dp)
                         )
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
                         status,
-                        color = if (status == "Normal") SuccessGreen else OrangeMain,
+                        color = if (status == (if (isTurkish) "Normal" else "Normal")) SuccessGreen else OrangeMain,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp
                     )

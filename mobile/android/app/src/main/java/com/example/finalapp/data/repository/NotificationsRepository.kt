@@ -12,12 +12,15 @@ data class NotificationsPayload(
 class NotificationsRepository(
     private val apiService: ApiService = ApiClient.apiService
 ) {
-    suspend fun fetchNotifications(unreadOnly: Boolean = false): RepositoryResult<NotificationsPayload> {
+    suspend fun fetchNotifications(
+        unreadOnly: Boolean = false,
+        limit: Int = 50,
+    ): RepositoryResult<NotificationsPayload> {
         val token = SessionStore.token.value
             ?: return RepositoryResult.Error("No active session.")
 
         return runCatching {
-            apiService.getNotifications("Bearer $token", unreadOnly = unreadOnly)
+            apiService.getNotifications("Bearer $token", limit = limit, unreadOnly = unreadOnly)
         }.fold(
             onSuccess = { response ->
                 val body = response.body()
@@ -36,6 +39,13 @@ class NotificationsRepository(
                 RepositoryResult.Error(it.message ?: "Network error while loading notifications.")
             }
         )
+    }
+
+    suspend fun fetchUnreadCount(): RepositoryResult<Int> {
+        return when (val result = fetchNotifications(limit = 1)) {
+            is RepositoryResult.Success -> RepositoryResult.Success(result.data.unreadCount)
+            is RepositoryResult.Error -> result
+        }
     }
 
     suspend fun markAsRead(notificationId: String): RepositoryResult<Unit> {

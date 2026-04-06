@@ -24,6 +24,8 @@ import com.example.finalapp.ui.navigation.Screen
 import com.example.finalapp.ui.theme.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.finalapp.ui.localization.rememberIsTurkish
+import com.example.finalapp.ui.localization.translateMessage
 import com.example.finalapp.ui.viewmodel.PpgViewModel
 import androidx.compose.foundation.Canvas
 
@@ -33,6 +35,9 @@ fun PPGScreen(
     viewModel: PpgViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isTurkish = rememberIsTurkish()
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
 
     Box(
         modifier = Modifier
@@ -51,12 +56,12 @@ fun PPGScreen(
                     onClick = { navController.popBackStack() },
                     modifier = Modifier.size(44.dp).background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
                 ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = CyanMain)
+                    Icon(Icons.Default.ArrowBack, contentDescription = t("Back", "Geri"), tint = CyanMain)
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
-                    Text("PPG Signal", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text("Backend signal quality view", fontSize = 13.sp, color = TextSecondary)
+                    Text(t("PPG Signal", "PPG Sinyali"), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(t("Backend signal quality view", "Backend sinyal kalitesi görünümü"), fontSize = 13.sp, color = TextSecondary)
                 }
             }
 
@@ -77,7 +82,7 @@ fun PPGScreen(
                                     if (uiState.isLoading && uiState.avgQuality == 0) "--" else "${uiState.avgQuality}", 
                                     fontSize = 32.sp, fontWeight = FontWeight.Bold, color = CyanMain
                                 )
-                                Text("Avg Quality", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
+                                Text(t("Avg Quality", "Ort. Kalite"), fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
                             }
                         }
                         Box(modifier = Modifier.weight(1f).background(SuccessGreen.copy(alpha = 0.05f), RoundedCornerShape(16.dp)).padding(16.dp), contentAlignment = Alignment.Center) {
@@ -87,7 +92,7 @@ fun PPGScreen(
                                     if (uiState.isLoading && uiState.signalStability == 0) "--" else "${uiState.signalStability}%", 
                                     fontSize = 32.sp, fontWeight = FontWeight.Bold, color = stabilityColor
                                 )
-                                Text("Stability", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
+                                Text(t("Stability", "Kararlılık"), fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -96,7 +101,7 @@ fun PPGScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text("Signal Quality Trend", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack, modifier = Modifier.padding(start = 4.dp))
+            Text(t("Signal Quality Trend", "Sinyal Kalite Trendi"), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack, modifier = Modifier.padding(start = 4.dp))
             Spacer(modifier = Modifier.height(12.dp))
 
             PremiumGlassCard(modifier = Modifier.fillMaxWidth().height(240.dp)) {
@@ -156,7 +161,11 @@ fun PPGScreen(
                     }
                 } else {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(uiState.errorMessage ?: "Failed to generate signal.", color = TextMuted, fontWeight = FontWeight.Medium)
+                        Text(
+                            translateMessage(uiState.errorMessage ?: "Failed to generate signal.", isTurkish),
+                            color = TextMuted,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             }
@@ -165,8 +174,8 @@ fun PPGScreen(
 
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = uiState.backendMessage
-                        ?: "This screen reflects whatever the backend PPG service currently provides.",
+                    text = uiState.backendMessage?.let { translateMessage(it, isTurkish) }
+                        ?: t("This screen reflects whatever the backend PPG service currently provides.", "Bu ekran backend PPG servisinin o anda sağladığı veriyi yansıtır."),
                     fontSize = 12.sp,
                     color = TextSecondary,
                     fontWeight = FontWeight.Medium,
@@ -182,11 +191,14 @@ fun PPGScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Info, contentDescription = null, tint = CyanMain, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("What is PPG?", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                        Text(t("What is PPG?", "PPG Nedir?"), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        "Photoplethysmography (PPG) is an optical technique used to detect blood volume changes in the tissue.",
+                        t(
+                            "Photoplethysmography (PPG) is an optical technique used to detect blood volume changes in the tissue.",
+                            "Fotopletismografi (PPG), dokudaki kan hacmi değişimlerini algılamak için kullanılan optik bir tekniktir."
+                        ),
                         fontSize = 13.sp,
                         color = TextSecondary,
                         fontWeight = FontWeight.Medium,

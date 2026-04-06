@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.repository.AuthRepository
 import com.example.finalapp.data.repository.BleRepository
 import com.example.finalapp.data.repository.DashboardRepository
+import com.example.finalapp.data.repository.NotificationsRepository
 import com.example.finalapp.data.repository.ProfileRepository
 import com.example.finalapp.data.repository.ReadingRepository
 import com.example.finalapp.data.repository.RepositoryResult
@@ -25,6 +26,7 @@ data class DashboardUiState(
     val spo2: String = "--",
     val bleDeviceName: String = "BP Monitor Pro",
     val bleConnectedLabel: String = "Disconnected",
+    val unreadNotificationCount: Int = 0,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val lastCheckupDate: String? = null
@@ -33,6 +35,7 @@ data class DashboardUiState(
 class DashboardViewModel(
     private val dashboardRepository: DashboardRepository = DashboardRepository(),
     private val bleRepository: BleRepository = BleRepository(),
+    private val notificationsRepository: NotificationsRepository = NotificationsRepository(),
     private val authRepository: AuthRepository = AuthRepository(),
     private val profileRepository: ProfileRepository = ProfileRepository()
 ) : ViewModel() {
@@ -95,6 +98,16 @@ class DashboardViewModel(
                                 "Disconnected"
                             }
                         )
+                    }
+                }
+
+                is RepositoryResult.Error -> Unit
+            }
+
+            when (val notificationsResult = notificationsRepository.fetchUnreadCount()) {
+                is RepositoryResult.Success -> {
+                    _uiState.update {
+                        it.copy(unreadNotificationCount = notificationsResult.data)
                     }
                 }
 

@@ -37,6 +37,7 @@ import androidx.navigation.NavController
 import com.example.finalapp.data.model.DailyReportDto
 import com.example.finalapp.ui.component.GlassCard
 import com.example.finalapp.ui.component.PremiumGlassCard
+import com.example.finalapp.ui.localization.rememberIsTurkish
 import com.example.finalapp.ui.theme.BackgroundGradient
 import com.example.finalapp.ui.theme.ForegroundBlack
 import com.example.finalapp.ui.theme.OrangeMain
@@ -51,6 +52,9 @@ fun ReportsScreen(
     viewModel: ReportsViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isTurkish = rememberIsTurkish()
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
 
     Box(
         modifier = Modifier
@@ -74,11 +78,11 @@ fun ReportsScreen(
                 }
                 Spacer(modifier = Modifier.size(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Reports", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text("Weekly and monthly summaries", fontSize = 12.sp, color = TextSecondary)
+                    Text(t("Reports", "Raporlar"), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(t("Weekly and monthly summaries", "Haftalık ve aylık özetler"), fontSize = 12.sp, color = TextSecondary)
                 }
                 TextButton(onClick = viewModel::refresh) {
-                    Text("Refresh", color = PrimaryBlue, fontWeight = FontWeight.Bold)
+                    Text(t("Refresh", "Yenile"), color = PrimaryBlue, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -87,13 +91,13 @@ fun ReportsScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 ReportRangeButton(
                     modifier = Modifier.weight(1f),
-                    label = "Weekly",
+                    label = t("Weekly", "Haftalık"),
                     selected = uiState.selectedRange == "weekly",
                     onClick = { viewModel.selectRange("weekly") }
                 )
                 ReportRangeButton(
                     modifier = Modifier.weight(1f),
-                    label = "Monthly",
+                    label = t("Monthly", "Aylık"),
                     selected = uiState.selectedRange == "monthly",
                     onClick = { viewModel.selectRange("monthly") }
                 )
@@ -107,7 +111,15 @@ fun ReportsScreen(
             }
 
             uiState.message?.let { message ->
-                Text(message, color = TextSecondary, fontSize = 12.sp)
+                Text(
+                    when {
+                        isTurkish && message == "No data for this week." -> "Bu hafta için veri yok."
+                        isTurkish && message == "No data for this month." -> "Bu ay için veri yok."
+                        else -> message
+                    },
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
@@ -125,7 +137,7 @@ fun ReportsScreen(
                             }
                             Spacer(modifier = Modifier.size(12.dp))
                             Column {
-                                Text("Report Window", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                                Text(t("Report Window", "Rapor Aralığı"), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
                                 Text("${report.weekStart} - ${report.weekEnd}", fontSize = 12.sp, color = TextSecondary)
                             }
                         }
@@ -135,13 +147,13 @@ fun ReportsScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                             ReportMetricCard(
                                 modifier = Modifier.weight(1f),
-                                title = "Score",
+                                title = t("Score", "Puan"),
                                 value = report.healthScore.toString(),
                                 accent = SuccessGreen
                             )
                             ReportMetricCard(
                                 modifier = Modifier.weight(1f),
-                                title = "Readings",
+                                title = t("Readings", "Ölçümler"),
                                 value = report.readingsCount.toString(),
                                 accent = PrimaryBlue
                             )
@@ -152,19 +164,19 @@ fun ReportsScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                             ReportMetricCard(
                                 modifier = Modifier.weight(1f),
-                                title = "Avg SYS",
+                                title = t("Avg SYS", "Ort. SYS"),
                                 value = report.avgSystolic?.toString() ?: "--",
                                 accent = OrangeMain
                             )
                             ReportMetricCard(
                                 modifier = Modifier.weight(1f),
-                                title = "Avg DIA",
+                                title = t("Avg DIA", "Ort. DIA"),
                                 value = report.avgDiastolic?.toString() ?: "--",
                                 accent = Color(0xFFB91C1C)
                             )
                             ReportMetricCard(
                                 modifier = Modifier.weight(1f),
-                                title = "Avg HR",
+                                title = t("Avg HR", "Ort. Nabız"),
                                 value = report.avgHeartRate?.toString() ?: "--",
                                 accent = Color(0xFFDB2777)
                             )
@@ -174,11 +186,11 @@ fun ReportsScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                Text("Daily Summary", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                Text(t("Daily Summary", "Günlük Özet"), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
                 Spacer(modifier = Modifier.height(12.dp))
 
                 report.dailySummaries.forEach { summary ->
-                    DailySummaryCard(summary)
+                    DailySummaryCard(summary, isTurkish)
                     Spacer(modifier = Modifier.height(10.dp))
                 }
             }
@@ -211,18 +223,22 @@ private fun ReportMetricCard(modifier: Modifier, title: String, value: String, a
 }
 
 @Composable
-private fun DailySummaryCard(summary: DailyReportDto) {
+private fun DailySummaryCard(summary: DailyReportDto, isTurkish: Boolean) {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(summary.date, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "SYS ${summary.avgSystolic ?: "--"}  DIA ${summary.avgDiastolic ?: "--"}  HR ${summary.avgHeartRate ?: "--"}",
+                "${if (isTurkish) "SYS" else "SYS"} ${summary.avgSystolic ?: "--"}  ${if (isTurkish) "DIA" else "DIA"} ${summary.avgDiastolic ?: "--"}  ${if (isTurkish) "NABIZ" else "HR"} ${summary.avgHeartRate ?: "--"}",
                 fontSize = 13.sp,
                 color = TextSecondary
             )
             Spacer(modifier = Modifier.height(6.dp))
-            Text("Readings: ${summary.readingCount}", fontSize = 12.sp, color = TextSecondary)
+            Text(
+                if (isTurkish) "Ölçüm: ${summary.readingCount}" else "Readings: ${summary.readingCount}",
+                fontSize = 12.sp,
+                color = TextSecondary
+            )
         }
     }
 }

@@ -5,10 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.model.UserDto
 import com.example.finalapp.data.repository.ProfileRepository
 import com.example.finalapp.data.repository.RepositoryResult
+import com.example.finalapp.data.repository.SettingsStore
 import java.time.LocalDate
 import java.time.Period
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +36,10 @@ class ProfileViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(ProfileUiState())
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
+
+    private fun t(english: String, turkish: String): String {
+        return if (SettingsStore.settings.value.language == "tr") turkish else english
+    }
 
     init {
         refresh()
@@ -77,10 +83,18 @@ class ProfileViewModel(
         viewModelScope.launch {
             val currentState = _uiState.value
             val normalizedDateOfBirth = normalizeDateOfBirth(currentState.dateOfBirth)
+            val normalizedGender = normalizeGender(currentState.gender)
 
             if (currentState.dateOfBirth.isNotBlank() && normalizedDateOfBirth == null) {
                 _uiState.update {
-                    it.copy(message = "Date of birth must be a valid date.", isLoading = false)
+                    it.copy(message = t("Date of birth must be a valid date.", "Doğum tarihi geçerli bir tarih olmalıdır."), isLoading = false)
+                }
+                return@launch
+            }
+
+            if (currentState.gender.isNotBlank() && normalizedGender == null) {
+                _uiState.update {
+                    it.copy(message = t("Gender must be Male, Female, or Other.", "Cinsiyet Erkek, Kadın veya Diğer olmalıdır."), isLoading = false)
                 }
                 return@launch
             }
@@ -91,13 +105,13 @@ class ProfileViewModel(
                     name = currentState.name,
                     email = currentState.email,
                     dateOfBirth = normalizedDateOfBirth ?: "",
-                    gender = currentState.gender,
+                    gender = normalizedGender ?: "",
                     weight = currentState.weight,
                     height = currentState.height
                 )
             ) {
                 is RepositoryResult.Success -> {
-                    applyUser(result.data, message = "Profile saved successfully!")
+                    applyUser(result.data, message = t("Profile saved successfully!", "Profil başarıyla kaydedildi!"))
                     _uiState.update { it.copy(isEditing = false, isLoading = false) }
                 }
 
@@ -164,6 +178,19 @@ class ProfileViewModel(
         } ?: return null
 
         return parsed.format(DateTimeFormatter.ISO_LOCAL_DATE)
+    }
+
+    private fun normalizeGender(gender: String): String? {
+        return when (gender.trim().lowercase(Locale.ROOT)) {
+            "" -> null
+            "male" -> "Male"
+            "female" -> "Female"
+            "other" -> "Other"
+            "erkek" -> "Male"
+            "kadın", "kadin" -> "Female"
+            "diğer", "diger" -> "Other"
+            else -> null
+        }
     }
 
     private fun updateField(update: (ProfileUiState) -> ProfileUiState) {

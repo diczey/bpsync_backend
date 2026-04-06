@@ -33,6 +33,8 @@ import com.example.finalapp.ui.theme.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.finalapp.data.model.TrendDataDto
+import com.example.finalapp.ui.localization.rememberIsTurkish
+import com.example.finalapp.ui.localization.translateMessage
 import com.example.finalapp.ui.viewmodel.TrendsViewModel
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -52,6 +54,15 @@ fun TrendsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val periods = listOf("Daily", "Weekly", "Monthly")
+    val isTurkish = rememberIsTurkish()
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
+    fun periodLabel(period: String): String = when (period) {
+        "Daily" -> t("Daily", "Günlük")
+        "Weekly" -> t("Weekly", "Haftalık")
+        "Monthly" -> t("Monthly", "Aylık")
+        else -> period
+    }
 
     Box(
         modifier = Modifier
@@ -72,12 +83,12 @@ fun TrendsScreen(
                         .size(44.dp)
                         .background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
                 ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = PrimaryBlue)
+                    Icon(Icons.Default.ArrowBack, contentDescription = t("Back", "Geri"), tint = PrimaryBlue)
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
-                    Text("Health Trends", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text(if(uiState.isLoading) "Loading data..." else "Historical analysis", fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                    Text(t("Health Trends", "Sağlık Trendleri"), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(if(uiState.isLoading) t("Loading data...", "Veri yükleniyor...") else t("Historical analysis", "Geçmiş analiz"), fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
                 }
             }
 
@@ -98,7 +109,7 @@ fun TrendsScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                period,
+                                periodLabel(period),
                                 color = if (isSelected) Color.White else TextSecondary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
@@ -112,13 +123,17 @@ fun TrendsScreen(
 
             uiState.errorMessage?.let { error ->
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(8.dp))
+                Text(
+                    translateMessage(error, isTurkish),
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(8.dp)
+                )
             }
 
             uiState.infoMessage?.takeIf { it.isNotBlank() }?.let { message ->
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = message,
+                    text = translateMessage(message, isTurkish),
                     color = TextSecondary,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(horizontal = 8.dp)
@@ -132,13 +147,13 @@ fun TrendsScreen(
             val spo2Trend = uiState.trends.find { it.type == "spo2" }
 
             // Trend Charts
-            TrendChartSection(title = "Systolic Pressure", icon = Icons.Default.Favorite, color = ErrorRed, unit = "mmHg", trend = sysTrend)
+            TrendChartSection(title = t("Systolic Pressure", "Sistolik Basınç"), icon = Icons.Default.Favorite, color = ErrorRed, unit = "mmHg", trend = sysTrend, isTurkish = isTurkish)
             Spacer(modifier = Modifier.height(20.dp))
-            TrendChartSection(title = "Diastolic Pressure", icon = Icons.Default.FavoriteBorder, color = OrangeMain, unit = "mmHg", trend = diaTrend)
+            TrendChartSection(title = t("Diastolic Pressure", "Diyastolik Basınç"), icon = Icons.Default.FavoriteBorder, color = OrangeMain, unit = "mmHg", trend = diaTrend, isTurkish = isTurkish)
             Spacer(modifier = Modifier.height(20.dp))
-            TrendChartSection(title = "Heart Rate", icon = Icons.Default.FavoriteBorder, color = ActivePink, unit = "BPM", trend = hrTrend)
+            TrendChartSection(title = t("Heart Rate", "Kalp Atışı"), icon = Icons.Default.FavoriteBorder, color = ActivePink, unit = "BPM", trend = hrTrend, isTurkish = isTurkish)
             Spacer(modifier = Modifier.height(20.dp))
-            TrendChartSection(title = "Oxygen Level", icon = Icons.Default.SettingsInputAntenna, color = PrimaryBlue, unit = "%", trend = spo2Trend)
+            TrendChartSection(title = t("Oxygen Level", "Oksijen Seviyesi"), icon = Icons.Default.SettingsInputAntenna, color = PrimaryBlue, unit = "%", trend = spo2Trend, isTurkish = isTurkish)
 
             Spacer(modifier = Modifier.height(40.dp))
         }
@@ -146,13 +161,15 @@ fun TrendsScreen(
 }
 
 @Composable
-fun TrendChartSection(title: String, icon: ImageVector, color: Color, unit: String, trend: TrendDataDto?) {
+fun TrendChartSection(title: String, icon: ImageVector, color: Color, unit: String, trend: TrendDataDto?, isTurkish: Boolean) {
     val points = trend?.dataPoints.orEmpty()
     var chartWidth by remember(trend?.type, points.size) { mutableStateOf(0f) }
     var selectedIndex by remember(trend?.type, points.size) {
         mutableStateOf(points.lastIndex.takeIf { it >= 0 })
     }
     val selectedPoint = selectedIndex?.let(points::getOrNull)
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
 
     PremiumGlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(20.dp)) {
@@ -164,7 +181,7 @@ fun TrendChartSection(title: String, icon: ImageVector, color: Color, unit: Stri
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                        Text("Avg: ${trend?.average ?: "--"} $unit", fontSize = 11.sp, color = TextSecondary)
+                        Text("${t("Avg", "Ort")}: ${trend?.average ?: "--"} $unit", fontSize = 11.sp, color = TextSecondary)
                     }
                 }
                 Column(horizontalAlignment = Alignment.End) {
@@ -175,7 +192,7 @@ fun TrendChartSection(title: String, icon: ImageVector, color: Color, unit: Stri
                         color = ForegroundBlack
                     )
                     Text(
-                        text = selectedPoint?.let { formatTrendTimestamp(it.timestamp) } ?: "Tap chart",
+                        text = selectedPoint?.let { formatTrendTimestamp(it.timestamp) } ?: t("Tap chart", "Grafiğe dokun"),
                         fontSize = 11.sp,
                         color = TextSecondary
                     )
@@ -279,7 +296,7 @@ fun TrendChartSection(title: String, icon: ImageVector, color: Color, unit: Stri
                         }
                     }
                 } else {
-                    Text("No recorded data to chart", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(t("No recorded data to chart", "Grafik için kayıtlı veri yok"), color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
             if (points.isNotEmpty()) {
@@ -295,7 +312,7 @@ fun TrendChartSection(title: String, icon: ImageVector, color: Color, unit: Stri
                         color = TextSecondary
                     )
                     Text(
-                        text = "Tap a point to inspect",
+                        text = t("Tap a point to inspect", "İncelemek için noktaya dokun"),
                         fontSize = 11.sp,
                         color = TextMuted
                     )

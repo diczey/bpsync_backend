@@ -15,11 +15,13 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from backend.database import get_db
+from backend.database import get_sensor_db
 from backend.models.user import User
 from backend.models.notification import Notification
 from backend.schemas.notifications import NotificationsResponse, NotificationDto
 from backend.utils.security import get_current_user
 from backend.utils.mock_data import generate_notifications
+from backend.utils.report_notifications import ensure_weekly_report_notification
 from backend.config import settings
 
 router = APIRouter()
@@ -30,7 +32,8 @@ async def get_notifications(
     limit: Optional[int] = 20,
     unread_only: bool = False,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    sensor_db: Session = Depends(get_sensor_db),
 ):
     """
     List notifications for the authenticated user.
@@ -54,7 +57,13 @@ async def get_notifications(
             notifications=[NotificationDto(**n) for n in mock_notifications],
             unread_count=unread_count
         )
-    
+
+    ensure_weekly_report_notification(
+        current_user=current_user,
+        user_db=db,
+        sensor_db=sensor_db,
+    )
+
     # Build query
     query = db.query(Notification).filter(Notification.user_id == current_user.id)
     

@@ -54,6 +54,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.finalapp.data.repository.BleDevice
 import com.example.finalapp.ui.component.PremiumGlassCard
+import com.example.finalapp.ui.localization.rememberIsTurkish
+import com.example.finalapp.ui.localization.translateMessage
 import com.example.finalapp.ui.theme.BackgroundGradient
 import com.example.finalapp.ui.theme.ErrorRed
 import com.example.finalapp.ui.theme.ForegroundBlack
@@ -70,6 +72,7 @@ fun BLEConnectionScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val isTurkish = rememberIsTurkish()
     val runtimePermissions = remember { requiredBlePermissions() }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -80,6 +83,8 @@ fun BLEConnectionScreen(
             viewModel.onPermissionsDenied()
         }
     }
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
 
     fun requestScan() {
         if (hasBlePermissions(context)) {
@@ -116,12 +121,12 @@ fun BLEConnectionScreen(
                         .size(44.dp)
                         .background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
                 ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = PrimaryBlue)
+                    Icon(Icons.Default.ArrowBack, contentDescription = t("Back", "Geri"), tint = PrimaryBlue)
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
-                    Text("Bluetooth Connection", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text("Real BLE device pairing", fontSize = 13.sp, color = TextSecondary)
+                    Text(t("Bluetooth Connection", "Bluetooth Bağlantısı"), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(t("Real BLE device pairing", "Gerçek BLE cihaz eşleştirmesi"), fontSize = 13.sp, color = TextSecondary)
                 }
             }
 
@@ -171,26 +176,30 @@ fun BLEConnectionScreen(
                                 .padding(14.dp)
                         ) {
                             Text(
-                                if (uiState.streaming) "Live Sync Active" else "Waiting for stream",
+                                if (uiState.streaming) t("Live Sync Active", "Canlı Senkron Aktif") else t("Waiting for stream", "Akış bekleniyor"),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ForegroundBlack
                             )
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("Frames received: ${uiState.framesReceived}", fontSize = 12.sp, color = TextSecondary)
-                            Text("Frames uploaded: ${uiState.framesUploaded}", fontSize = 12.sp, color = TextSecondary)
-                            Text("Window fill: ${uiState.bufferFill}", fontSize = 12.sp, color = TextSecondary)
-                            Text("Measurements ready: ${uiState.measurementsReady}", fontSize = 12.sp, color = TextSecondary)
+                            Text("${t("Frames received", "Alınan kare")}: ${uiState.framesReceived}", fontSize = 12.sp, color = TextSecondary)
+                            Text("${t("Frames uploaded", "Gönderilen kare")}: ${uiState.framesUploaded}", fontSize = 12.sp, color = TextSecondary)
+                            Text("${t("Window fill", "Pencere doluluğu")}: ${uiState.bufferFill}", fontSize = 12.sp, color = TextSecondary)
+                            Text("${t("Measurements ready", "Hazır ölçüm")}: ${uiState.measurementsReady}", fontSize = 12.sp, color = TextSecondary)
                             uiState.lastMeasurement?.let { measurement ->
                                 Spacer(modifier = Modifier.height(6.dp))
-                                Text("Latest: $measurement", fontSize = 12.sp, color = ForegroundBlack)
+                                Text("${t("Latest", "Son")}: $measurement", fontSize = 12.sp, color = ForegroundBlack)
                             }
                         }
                     }
 
                     uiState.errorMessage?.let { error ->
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text(text = error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                        Text(
+                            text = translateMessage(error, isTurkish),
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 13.sp
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
@@ -210,7 +219,7 @@ fun BLEConnectionScreen(
                                     strokeWidth = 3.dp
                                 )
                             } else {
-                                Text("Scan for Devices", fontWeight = FontWeight.Bold)
+                                Text(t("Scan for Devices", "Cihazları Tara"), fontWeight = FontWeight.Bold)
                             }
                         }
                     } else {
@@ -220,7 +229,7 @@ fun BLEConnectionScreen(
                             shape = RoundedCornerShape(16.dp),
                             border = BorderStroke(1.dp, ErrorRed)
                         ) {
-                            Text("Disconnect Device", color = ErrorRed, fontWeight = FontWeight.Bold)
+                            Text(t("Disconnect Device", "Cihaz Bağlantısını Kes"), color = ErrorRed, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -230,7 +239,7 @@ fun BLEConnectionScreen(
 
             if (uiState.devices.isNotEmpty() && !uiState.connected) {
                 Text(
-                    "Found Devices",
+                    t("Found Devices", "Bulunan Cihazlar"),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextSecondary,

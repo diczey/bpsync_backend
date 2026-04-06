@@ -31,6 +31,8 @@ import java.time.temporal.ChronoUnit
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.finalapp.ui.localization.rememberIsTurkish
+import com.example.finalapp.ui.localization.translateStatus
 import com.example.finalapp.ui.viewmodel.DashboardViewModel
 
 @Composable
@@ -39,6 +41,9 @@ fun HealthStatusScreen(
     viewModel: DashboardViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isTurkish = rememberIsTurkish()
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
 
     var dateInput by remember { mutableStateOf("") }
     var days by remember { mutableStateOf(0L) }
@@ -93,8 +98,8 @@ fun HealthStatusScreen(
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
-                    Text("Health Status", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text("Next check-in countdown", fontSize = 13.sp, color = TextSecondary)
+                    Text(t("Health Status", "Sağlık Durumu"), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(t("Next check-in countdown", "Son kontrolden beri geçen süre"), fontSize = 13.sp, color = TextSecondary)
                 }
             }
 
@@ -110,13 +115,13 @@ fun HealthStatusScreen(
                         Icon(Icons.Default.AccessTime, contentDescription = null, tint = Color.White, modifier = Modifier.fillMaxSize())
                     }
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Time Since Last Check-In", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text("Stay consistent with regular check-ups", fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                    Text(t("Time Since Last Check-In", "Son Kontrolden Beri Geçen Süre"), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(t("Stay consistent with regular check-ups", "Düzenli kontrolleri aksatma"), fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
 
                     Spacer(modifier = Modifier.height(32.dp))
 
                     if (checkupStr.isNullOrBlank()) {
-                        Text("Please enter your last checkup date:", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = ForegroundBlack)
+                        Text(t("Please enter your last checkup date:", "Lütfen son kontrol tarihinizi girin:"), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = ForegroundBlack)
                         Spacer(modifier = Modifier.height(12.dp))
                         OutlinedTextField(
                             value = dateInput,
@@ -133,17 +138,17 @@ fun HealthStatusScreen(
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
                         ) {
-                            Text(if (uiState.isLoading) "Saving..." else "Save Date", fontWeight = FontWeight.Bold)
+                            Text(if (uiState.isLoading) t("Saving...", "Kaydediliyor...") else t("Save Date", "Tarihi Kaydet"), fontWeight = FontWeight.Bold)
                         }
                         if (uiState.errorMessage != null && uiState.errorMessage!!.contains("save date", ignoreCase = true)) {
                             Text(uiState.errorMessage!!, color = ErrorRed, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                         }
                     } else {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            CountdownItem(modifier = Modifier.weight(1f), value = days.toString(), label = "Days")
-                            CountdownItem(modifier = Modifier.weight(1f), value = hours.toString().padStart(2, '0'), label = "Hours")
-                            CountdownItem(modifier = Modifier.weight(1f), value = minutes.toString().padStart(2, '0'), label = "Mins")
-                            CountdownItem(modifier = Modifier.weight(1f), value = seconds.toString().padStart(2, '0'), label = "Secs")
+                            CountdownItem(modifier = Modifier.weight(1f), value = days.toString(), label = t("Days", "Gün"))
+                            CountdownItem(modifier = Modifier.weight(1f), value = hours.toString().padStart(2, '0'), label = t("Hours", "Saat"))
+                            CountdownItem(modifier = Modifier.weight(1f), value = minutes.toString().padStart(2, '0'), label = t("Mins", "Dak"))
+                            CountdownItem(modifier = Modifier.weight(1f), value = seconds.toString().padStart(2, '0'), label = t("Secs", "Sn"))
                         }
                     }
                 }
@@ -160,8 +165,8 @@ fun HealthStatusScreen(
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("Current Status", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                            Text(if (uiState.isLoading) "Loading metrics..." else "Based on latest readings", fontSize = 12.sp, color = TextSecondary)
+                            Text(t("Current Status", "Güncel Durum"), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                            Text(if (uiState.isLoading) t("Loading metrics...", "Metrikler yükleniyor...") else t("Based on latest readings", "Son ölçümlere göre"), fontSize = 12.sp, color = TextSecondary)
                         }
                     }
                     Spacer(modifier = Modifier.height(20.dp))
@@ -193,9 +198,9 @@ fun HealthStatusScreen(
                         else -> "Critical" to ErrorRed
                     }
                     
-                    StatusRow(label = "Blood Pressure", status = bpStatus.first, color = bpStatus.second)
-                    StatusRow(label = "Heart Rate", status = hrStatus.first, color = hrStatus.second)
-                    StatusRow(label = "Oxygen Level", status = spo2Status.first, color = spo2Status.second)
+                    StatusRow(label = t("Blood Pressure", "Tansiyon"), status = translateStatus(bpStatus.first, isTurkish), color = bpStatus.second)
+                    StatusRow(label = t("Heart Rate", "Kalp Atışı"), status = translateStatus(hrStatus.first, isTurkish), color = hrStatus.second)
+                    StatusRow(label = t("Oxygen Level", "Oksijen Seviyesi"), status = translateStatus(spo2Status.first, isTurkish), color = spo2Status.second)
                 }
             }
             
@@ -209,12 +214,12 @@ fun HealthStatusScreen(
                             Icon(Icons.Default.Security, contentDescription = null, tint = PrimaryBlue)
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("Health Tips", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                        Text(t("Health Tips", "Sağlık İpuçları"), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
                     }
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("• Regular monitoring helps detect health issues early.", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(vertical = 4.dp))
-                    Text("• Maintain a balanced diet and exercise routine.", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(vertical = 4.dp))
-                    Text("• Stay hydrated and get adequate sleep.", fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(vertical = 4.dp))
+                    Text(t("• Regular monitoring helps detect health issues early.", "• Düzenli takip sağlık sorunlarını erken fark etmeye yardımcı olur."), fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(vertical = 4.dp))
+                    Text(t("• Maintain a balanced diet and exercise routine.", "• Dengeli beslenme ve egzersiz rutinini koru."), fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(vertical = 4.dp))
+                    Text(t("• Stay hydrated and get adequate sleep.", "• Su tüketimine dikkat et ve yeterince uyu."), fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(vertical = 4.dp))
                 }
             }
 

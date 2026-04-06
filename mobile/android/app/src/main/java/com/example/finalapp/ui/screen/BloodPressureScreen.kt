@@ -1,18 +1,36 @@
 package com.example.finalapp.ui.screen
 
-import com.example.finalapp.ui.component.*
+import com.example.finalapp.ui.component.GlassCard
+import com.example.finalapp.ui.component.PremiumGlassCard
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,7 +45,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.finalapp.data.model.TrendDataPoint
-import com.example.finalapp.ui.theme.*
+import com.example.finalapp.ui.localization.rememberIsTurkish
+import com.example.finalapp.ui.localization.translateStatus
+import com.example.finalapp.ui.theme.ActivePink
+import com.example.finalapp.ui.theme.BackgroundGradient
+import com.example.finalapp.ui.theme.ErrorRed
+import com.example.finalapp.ui.theme.ForegroundBlack
+import com.example.finalapp.ui.theme.PrimaryBlue
+import com.example.finalapp.ui.theme.SuccessGreen
+import com.example.finalapp.ui.theme.TextMuted
+import com.example.finalapp.ui.theme.TextSecondary
 import com.example.finalapp.ui.viewmodel.BloodPressureViewModel
 
 @Composable
@@ -37,8 +64,10 @@ fun BloodPressureScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
+    val isTurkish = rememberIsTurkish()
 
-    // Derive status color
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
+
     val statusColor = when {
         uiState.statusLabel.contains("normal", ignoreCase = true) -> SuccessGreen
         uiState.statusLabel.contains("alert", ignoreCase = true) -> ErrorRed
@@ -56,7 +85,6 @@ fun BloodPressureScreen(
                 .verticalScroll(scrollState)
                 .padding(20.dp)
         ) {
-            // Header
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
                     onClick = { navController.popBackStack() },
@@ -68,25 +96,27 @@ fun BloodPressureScreen(
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
-                    Text("Blood Pressure", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(t("Blood Pressure", "Tansiyon"), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
                     Text(
-                        if (uiState.isLoading) "Loading data…" else "Detailed analysis",
-                        fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium
+                        if (uiState.isLoading) t("Loading data...", "Veri yükleniyor...") else t("Detailed analysis", "Detaylı analiz"),
+                        fontSize = 13.sp,
+                        color = TextSecondary,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Error banner
             uiState.errorMessage?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 8.dp))
             }
 
-            // Main Reading Card
             PremiumGlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
-                    modifier = Modifier.padding(24.dp).fillMaxWidth(),
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Box(
@@ -98,7 +128,7 @@ fun BloodPressureScreen(
                         Icon(Icons.Default.Favorite, contentDescription = null, tint = ErrorRed, modifier = Modifier.fillMaxSize())
                     }
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Latest Reading", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                    Text(t("Latest Reading", "Son Ölçüm"), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
                     Spacer(modifier = Modifier.height(12.dp))
 
                     if (uiState.isLoading) {
@@ -121,7 +151,7 @@ fun BloodPressureScreen(
                             .padding(horizontal = 16.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            uiState.statusLabel.uppercase(),
+                            translateStatus(uiState.statusLabel, isTurkish).uppercase(),
                             color = statusColor,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp
@@ -132,26 +162,32 @@ fun BloodPressureScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Stats Grid
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 StatCard(
                     modifier = Modifier.weight(1f),
-                    title = "AVG Systolic",
+                    title = t("AVG Systolic", "Ort. Sistolik"),
                     value = if (uiState.avgSystolic > 0) "${uiState.avgSystolic.toInt()}" else "--",
-                    color = ErrorRed
+                    color = ErrorRed,
+                    isTurkish = isTurkish
                 )
                 StatCard(
                     modifier = Modifier.weight(1f),
-                    title = "AVG Diastolic",
+                    title = t("AVG Diastolic", "Ort. Diyastolik"),
                     value = if (uiState.avgDiastolic > 0) "${uiState.avgDiastolic.toInt()}" else "--",
-                    color = ActivePink
+                    color = ActivePink,
+                    isTurkish = isTurkish
                 )
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 7-Day Trend Chart
-            Text("7-Day Trend", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack, modifier = Modifier.padding(start = 4.dp))
+            Text(
+                t("7-Day Trend", "7 Günlük Trend"),
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                color = ForegroundBlack,
+                modifier = Modifier.padding(start = 4.dp)
+            )
             Spacer(modifier = Modifier.height(12.dp))
 
             PremiumGlassCard(modifier = Modifier.fillMaxWidth().height(220.dp)) {
@@ -159,10 +195,10 @@ fun BloodPressureScreen(
                     when {
                         uiState.isLoading -> CircularProgressIndicator(color = PrimaryBlue)
                         uiState.sysTrendPoints.isEmpty() && uiState.diaTrendPoints.isEmpty() ->
-                            Text("No recorded data to chart", color = TextMuted, fontWeight = FontWeight.Medium)
+                            Text(t("No recorded data to chart", "Grafik için kayıtlı veri yok"), color = TextMuted, fontWeight = FontWeight.Medium)
+
                         else -> {
                             Canvas(modifier = Modifier.fillMaxSize()) {
-                                // Draw systolic line (red)
                                 drawTrendLine(
                                     points = uiState.sysTrendPoints,
                                     minVal = uiState.sysTrendMin,
@@ -170,7 +206,6 @@ fun BloodPressureScreen(
                                     color = ErrorRed,
                                     strokeWidth = 4.dp.toPx()
                                 )
-                                // Draw diastolic line (pink)
                                 drawTrendLine(
                                     points = uiState.diaTrendPoints,
                                     minVal = uiState.diaTrendMin,
@@ -184,18 +219,16 @@ fun BloodPressureScreen(
                 }
             }
 
-            // Legend
             if (uiState.sysTrendPoints.isNotEmpty() || uiState.diaTrendPoints.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.padding(start = 12.dp)) {
-                    LegendDot(color = ErrorRed, label = "Systolic")
-                    LegendDot(color = ActivePink, label = "Diastolic")
+                    LegendDot(color = ErrorRed, label = t("Systolic", "Sistolik"))
+                    LegendDot(color = ActivePink, label = t("Diastolic", "Diyastolik"))
                 }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Health Insights
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
@@ -208,10 +241,11 @@ fun BloodPressureScreen(
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Healthy Tip", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                        Text(t("Healthy Tip", "Sağlık İpucu"), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
                         Text(
-                            "Consistent readings help track your health effectively.",
-                            fontSize = 12.sp, color = TextSecondary
+                            t("Consistent readings help track your health effectively.", "Düzenli ölçümler sağlığını daha iyi takip etmene yardımcı olur."),
+                            fontSize = 12.sp,
+                            color = TextSecondary
                         )
                     }
                 }
@@ -222,7 +256,6 @@ fun BloodPressureScreen(
     }
 }
 
-// Canvas extension to draw a line chart on the existing DrawScope
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTrendLine(
     points: List<TrendDataPoint>,
     minVal: Float,
@@ -251,7 +284,7 @@ fun LegendDot(color: Color, label: String) {
 }
 
 @Composable
-fun StatCard(modifier: Modifier, title: String, value: String, color: Color) {
+fun StatCard(modifier: Modifier, title: String, value: String, color: Color, isTurkish: Boolean) {
     Box(
         modifier = modifier
             .background(Color.White.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
@@ -261,7 +294,7 @@ fun StatCard(modifier: Modifier, title: String, value: String, color: Color) {
         Column {
             Text(title, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondary, modifier = Modifier.padding(bottom = 4.dp))
             Text(value, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = color)
-            Text("mmHg", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = TextMuted)
+            Text(if (isTurkish) "mmHg" else "mmHg", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = TextMuted)
         }
     }
 }

@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class TrendsUiState(
-    val selectedPeriod: String = "weekly",
+    val selectedPeriod: String = "Weekly",
     val trends: List<TrendDataDto> = emptyList(),
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
