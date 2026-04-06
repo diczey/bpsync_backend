@@ -12,6 +12,7 @@ import com.example.finalapp.data.repository.SessionStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -40,14 +41,13 @@ class DashboardViewModel(
 
     init {
         hydrateFromSession()
-        hydrateFromLocalReading()
+        observeReadings()
         refreshDashboard()
     }
 
     fun refreshDashboard() {
         viewModelScope.launch {
             hydrateFromSession()
-            hydrateFromLocalReading()
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
             when (ReadingRepository.syncFromApi()) {
@@ -118,6 +118,7 @@ class DashboardViewModel(
             val result = profileRepository.saveProfile(
                 name = user.name,
                 email = user.email,
+                dateOfBirth = user.dateOfBirth ?: "",
                 gender = user.gender ?: "",
                 weight = user.weight ?: "",
                 height = user.height ?: "",
@@ -142,15 +143,19 @@ class DashboardViewModel(
         }
     }
 
-    private fun hydrateFromLocalReading() {
-        val latest = ReadingRepository.latestReading() ?: return
-        _uiState.update {
-            it.copy(
-                systolic = latest.systolic,
-                diastolic = latest.diastolic,
-                pulse = latest.pulse,
-                spo2 = latest.spo2
-            )
+    private fun observeReadings() {
+        viewModelScope.launch {
+            ReadingRepository.readings.collect { readings ->
+                val latest = readings.firstOrNull() ?: return@collect
+                _uiState.update {
+                    it.copy(
+                        systolic = latest.systolic,
+                        diastolic = latest.diastolic,
+                        pulse = latest.pulse,
+                        spo2 = latest.spo2
+                    )
+                }
+            }
         }
     }
 }

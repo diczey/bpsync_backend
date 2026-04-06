@@ -26,6 +26,51 @@ interface ApiService {
         @Body request: ProfileUpdateRequest
     ): Response<ProfileResponse>
 
+    @GET("settings")
+    suspend fun getSettings(@Header("Authorization") token: String): Response<SettingsResponse>
+
+    @PUT("settings")
+    suspend fun updateSettings(
+        @Header("Authorization") token: String,
+        @Body request: SettingsUpdateRequest
+    ): Response<SettingsResponse>
+
+    @GET("notifications")
+    suspend fun getNotifications(
+        @Header("Authorization") token: String,
+        @Query("limit") limit: Int = 50,
+        @Query("unread_only") unreadOnly: Boolean = false
+    ): Response<NotificationsResponse>
+
+    @PUT("notifications/{notificationId}/read")
+    suspend fun markNotificationAsRead(
+        @Header("Authorization") token: String,
+        @Path("notificationId") notificationId: String
+    ): Response<CommandResponse>
+
+    @PUT("notifications/read-all")
+    suspend fun markAllNotificationsAsRead(
+        @Header("Authorization") token: String
+    ): Response<CommandResponse>
+
+    @DELETE("notifications/{notificationId}")
+    suspend fun deleteNotification(
+        @Header("Authorization") token: String,
+        @Path("notificationId") notificationId: String
+    ): Response<CommandResponse>
+
+    @GET("reports/weekly")
+    suspend fun getWeeklyReport(
+        @Header("Authorization") token: String,
+        @Query("week_offset") weekOffset: Int = 0
+    ): Response<HealthReportResponse>
+
+    @GET("reports/monthly")
+    suspend fun getMonthlyReport(
+        @Header("Authorization") token: String,
+        @Query("month_offset") monthOffset: Int = 0
+    ): Response<HealthReportResponse>
+
     @GET("ble/status")
     suspend fun getBleStatus(@Header("Authorization") token: String): Response<BLEStatusResponse>
 
@@ -37,6 +82,12 @@ interface ApiService {
 
     @POST("ble/stop")
     suspend fun stopStreaming(@Header("Authorization") token: String): Response<CommandResponse>
+
+    @POST("ble/mobile-frame")
+    suspend fun uploadBleFrame(
+        @Header("Authorization") token: String,
+        @Body request: BleFrameUploadRequest
+    ): Response<BleFrameUploadResponse>
 
     @GET("trends")
     suspend fun getTrends(

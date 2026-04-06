@@ -50,6 +50,17 @@ class HealthReadingsResponse(BaseModel):
     message:  Optional[str] = None
 
 
+class SeedDemoDataRequest(BaseModel):
+    count: int = 24
+    replace_existing: bool = False
+
+
+class SeedDemoDataResponse(BaseModel):
+    success: bool
+    inserted_count: int
+    message: Optional[str] = None
+
+
 # ══════════════════════════════════════════════════════════════
 #  REQUEST MODELS
 # ══════════════════════════════════════════════════════════════
@@ -115,6 +126,16 @@ def _row_to_dto(row) -> HealthReadingDto:
         spo2=getattr(row, 'spo2', None),
         temperature=None,  # Not stored in bp_readings; future pipeline improvement
     )
+
+
+def _resolve_category(systolic: int, diastolic: int) -> str:
+    if systolic >= 140 or diastolic >= 90:
+        return "Stage 2 Hypertension"
+    if systolic >= 130 or diastolic >= 80:
+        return "Stage 1 Hypertension"
+    if systolic >= 120 and diastolic < 80:
+        return "Elevated"
+    return "Normal"
 
 
 # ══════════════════════════════════════════════════════════════
@@ -224,6 +245,84 @@ async def add_reading(
         temperature=request.temperature,
     )
     return HealthReadingsResponse(success=True, readings=[saved])
+
+
+@router.post('/seed-demo', response_model=SeedDemoDataResponse)
+async def seed_demo_readings(
+    request: SeedDemoDataRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_sensor_db),
+):
+    """
+    Insert realistic sample readings directly into TimescaleDB for the
+    authenticated user so the mobile app can be tested without a BLE device.
+    """
+    count = max(1, min(request.count, 120))
+
+    if request.replace_existing:
+        params = sensor_user_params(current_user)
+        db.execute(
+            text(f'''
+                DELETE FROM bp_readings
+                WHERE {sensor_user_clause()}
+            '''),
+            params,
+        )
+        db.execute(
+            text(f'''
+                DELETE FROM wristband_data
+                WHERE {sensor_user_clause()}
+            '''),
+            params,
+        )
+
+    from backend.utils.mock_data import generate_health_readings
+
+    generated = generate_health_readings(current_user.id, count=count)
+
+    for item in generated:
+        reading_time = datetime.fromtimestamp(item["timestamp"] / 1000, tz=timezone.utc)
+        systolic = item.get("systolic_bp")
+        diastolic = item.get("diastolic_bp")
+        heart_rate = item.get("heart_rate")
+        spo2 = item.get("spo2")
+        temperature = item.get("temperature")
+
+        db.execute(
+            text('''
+                INSERT INTO bp_readings (time, user_id, systolic, diastolic, heart_rate, spo2, category)
+                VALUES (:time, :uid, :sys, :dia, :hr, :spo2, :cat)
+            '''),
+            {
+                'time': reading_time,
+                'uid': current_user.id,
+                'sys': systolic,
+                'dia': diastolic,
+                'hr': heart_rate,
+                'spo2': spo2,
+                'cat': _resolve_category(systolic or 0, diastolic or 0),
+            },
+        )
+
+        db.execute(
+            text('''
+                INSERT INTO wristband_data (time, user_id, temperature)
+                VALUES (:time, :uid, :temperature)
+            '''),
+            {
+                'time': reading_time,
+                'uid': current_user.id,
+                'temperature': temperature,
+            },
+        )
+
+    db.commit()
+
+    return SeedDemoDataResponse(
+        success=True,
+        inserted_count=count,
+        message=f"{count} demo reading(s) inserted for {current_user.email}."
+    )
 
 
 @router.post('/predict-bp', response_model=BPPredictionResponse)

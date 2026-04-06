@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -169,13 +170,29 @@ fun ProfileScreen(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 EditableProfileStatItem(
                     modifier = Modifier.weight(1f),
-                    label = "Age",
-                    value = uiState.age,
-                    onValueChange = viewModel::updateAge,
+                    label = "Birth Date",
+                    value = uiState.dateOfBirth,
+                    onValueChange = viewModel::updateDateOfBirth,
                     icon = Icons.Default.CalendarToday,
                     color = PrimaryBlue,
-                    isEditing = uiState.isEditing
+                    isEditing = uiState.isEditing,
+                    fieldWidth = 132.dp,
+                    placeholder = "YYYY-MM-DD"
                 )
+                EditableProfileStatItem(
+                    modifier = Modifier.weight(1f),
+                    label = "Age",
+                    value = uiState.age,
+                    onValueChange = {},
+                    icon = Icons.Default.CalendarToday,
+                    color = PurpleMain,
+                    isEditing = false
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 EditableProfileStatItem(
                     modifier = Modifier.weight(1f),
                     label = "Gender",
@@ -185,11 +202,6 @@ fun ProfileScreen(
                     color = PurpleMain,
                     isEditing = uiState.isEditing
                 )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 EditableProfileStatItem(
                     modifier = Modifier.weight(1f),
                     label = "Weight (kg)",
@@ -199,16 +211,20 @@ fun ProfileScreen(
                     color = SuccessGreen,
                     isEditing = uiState.isEditing
                 )
-                EditableProfileStatItem(
-                    modifier = Modifier.weight(1f),
-                    label = "Height (cm)",
-                    value = uiState.height,
-                    onValueChange = viewModel::updateHeight,
-                    icon = Icons.Default.Straighten,
-                    color = OrangeMain,
-                    isEditing = uiState.isEditing
-                )
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            EditableProfileStatItem(
+                modifier = Modifier.fillMaxWidth(),
+                label = "Height (cm)",
+                value = uiState.height,
+                onValueChange = viewModel::updateHeight,
+                icon = Icons.Default.Straighten,
+                color = OrangeMain,
+                isEditing = uiState.isEditing,
+                fieldWidth = 120.dp
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -240,7 +256,9 @@ fun EditableProfileStatItem(
     onValueChange: (String) -> Unit,
     icon: ImageVector,
     color: Color,
-    isEditing: Boolean
+    isEditing: Boolean,
+    fieldWidth: Dp = 80.dp,
+    placeholder: String? = null
 ) {
     Box(
         modifier = modifier
@@ -262,6 +280,15 @@ fun EditableProfileStatItem(
                 TextField(
                     value = value,
                     onValueChange = onValueChange,
+                    placeholder = placeholder?.let { hint ->
+                        {
+                            Text(
+                                text = hint,
+                                color = TextMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                    },
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent
@@ -272,10 +299,16 @@ fun EditableProfileStatItem(
                         color = color,
                         textAlign = TextAlign.Center
                     ),
-                    modifier = Modifier.width(80.dp)
+                    modifier = Modifier.width(fieldWidth),
+                    singleLine = true
                 )
             } else {
-                Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = color)
+                Text(
+                    value.ifBlank { "--" },
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = color
+                )
             }
             Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondary, modifier = Modifier.padding(top = 4.dp))
         }

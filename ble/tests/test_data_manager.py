@@ -104,7 +104,7 @@ def _make_dm(**kwargs):
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def _make_frame(ep=0, pi=50000, qi=1):

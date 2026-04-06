@@ -19,6 +19,7 @@ data class PpgUiState(
     val highestQuality: Int = 0,
     val lowestQuality: Int = 0,
     val chartPoints: List<PpgDataPoint> = emptyList(),
+    val backendMessage: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 )
@@ -38,8 +39,7 @@ class PpgViewModel(
         viewModelScope.launch {
             while (isActive) {
                 fetchSignal()
-                // Polling at a medium frequency to simulate live updates while 
-                // avoiding spamming the mock Rest API heavily.
+                // Keep the screen fresh without hammering the backend.
                 delay(3000)
             }
         }
@@ -60,6 +60,7 @@ class PpgViewModel(
                             highestQuality = result.data.highestQuality,
                             lowestQuality = result.data.lowestQuality,
                             chartPoints = result.data.chartPoints.sortedBy { p -> p.timestamp },
+                            backendMessage = result.data.message,
                             isLoading = false,
                             errorMessage = null
                         )

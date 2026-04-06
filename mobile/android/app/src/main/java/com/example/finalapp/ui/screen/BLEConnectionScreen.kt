@@ -161,6 +161,33 @@ fun BLEConnectionScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
 
+                    if (uiState.connected) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color.White.copy(alpha = 0.55f))
+                                .padding(14.dp)
+                        ) {
+                            Text(
+                                if (uiState.streaming) "Live Sync Active" else "Waiting for stream",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ForegroundBlack
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Frames received: ${uiState.framesReceived}", fontSize = 12.sp, color = TextSecondary)
+                            Text("Frames uploaded: ${uiState.framesUploaded}", fontSize = 12.sp, color = TextSecondary)
+                            Text("Window fill: ${uiState.bufferFill}", fontSize = 12.sp, color = TextSecondary)
+                            Text("Measurements ready: ${uiState.measurementsReady}", fontSize = 12.sp, color = TextSecondary)
+                            uiState.lastMeasurement?.let { measurement ->
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("Latest: $measurement", fontSize = 12.sp, color = ForegroundBlack)
+                            }
+                        }
+                    }
+
                     uiState.errorMessage?.let { error ->
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(text = error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)

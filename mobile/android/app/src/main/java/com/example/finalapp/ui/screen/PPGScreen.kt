@@ -56,7 +56,7 @@ fun PPGScreen(
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
                     Text("PPG Signal", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text("Photoplethysmography", fontSize = 13.sp, color = TextSecondary)
+                    Text("Backend signal quality view", fontSize = 13.sp, color = TextSecondary)
                 }
             }
 
@@ -96,8 +96,7 @@ fun PPGScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Signal Trend Placeholder
-            Text("Signal Trend", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack, modifier = Modifier.padding(start = 4.dp))
+            Text("Signal Quality Trend", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack, modifier = Modifier.padding(start = 4.dp))
             Spacer(modifier = Modifier.height(12.dp))
 
             PremiumGlassCard(modifier = Modifier.fillMaxWidth().height(240.dp)) {
@@ -160,6 +159,19 @@ fun PPGScreen(
                         Text(uiState.errorMessage ?: "Failed to generate signal.", color = TextMuted, fontWeight = FontWeight.Medium)
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = uiState.backendMessage
+                        ?: "This screen reflects whatever the backend PPG service currently provides.",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(16.dp)
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))

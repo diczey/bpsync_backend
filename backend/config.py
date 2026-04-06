@@ -32,7 +32,12 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000,http://localhost:8080"
     
     # Mock Data (for development without real sensors)
-    use_mock_data: bool = True
+    use_mock_data: bool = False
+
+    # BLE topology
+    # The production architecture is wrist -> phone -> backend.
+    # Keep server-side BLE scanning opt-in for local lab setups only.
+    enable_server_ble: bool = False
     
     @property
     def cors_origins(self) -> List[str]:

@@ -61,7 +61,7 @@ fun PulseScreen(
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
                     Text("Heart Rate / ECG", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text("Real-time monitoring", fontSize = 13.sp, color = TextSecondary)
+                    Text("Latest backend pulse analysis", fontSize = 13.sp, color = TextSecondary)
                 }
             }
 
@@ -132,9 +132,9 @@ fun PulseScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                            Icon(Icons.Default.Wifi, contentDescription = null, tint = ActivePink, modifier = Modifier.size(16.dp))
                            Spacer(modifier = Modifier.width(8.dp))
-                           Text("Live ECG", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                           Text("Waveform Preview", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         }
-                        Text(if (uiState.isMonitoring) "Recording..." else "Paused", color = if (uiState.isMonitoring) SuccessGreen else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(if (uiState.isMonitoring) "Updating..." else "Paused", color = if (uiState.isMonitoring) SuccessGreen else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                     
                     Spacer(modifier = Modifier.height(24.dp))
@@ -153,6 +153,19 @@ fun PulseScreen(
                 }
             }
             
+            Spacer(modifier = Modifier.height(20.dp))
+
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = uiState.backendMessage
+                        ?: "This screen shows whatever the backend pulse service currently provides.",
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+
             Spacer(modifier = Modifier.height(20.dp))
             
             // Health Tip
@@ -197,7 +210,6 @@ fun ECGWaveform(points: List<Float>) {
         val pointsCount = points.size
         if (pointsCount > 0) {
             val segmentWidth = width / pointsCount
-            // The synthetic ECG points from backend range from approximately -2.0 to 2.0
             val scaleY = height / 5f 
             
             for (i in 0 until pointsCount) {

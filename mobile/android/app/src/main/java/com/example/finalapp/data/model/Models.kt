@@ -77,6 +77,33 @@ data class ScanResult(
     val message: String
 )
 
+data class BleFrameUploadRequest(
+    @SerializedName("raw_frame") val rawFrame: String,
+    @SerializedName("source_device_name") val sourceDeviceName: String? = null,
+    @SerializedName("source_device_address") val sourceDeviceAddress: String? = null
+)
+
+data class BleInferredReadingDto(
+    val timestamp: Long,
+    val systolic: Int,
+    val diastolic: Int,
+    @SerializedName("heart_rate") val heartRate: Int,
+    val ptt: Float,
+    val quality: Int,
+    val category: String
+)
+
+data class BleFrameUploadResponse(
+    val success: Boolean,
+    @SerializedName("reading_id") val readingId: String? = null,
+    @SerializedName("seq_num") val seqNum: Int,
+    val quality: Float,
+    @SerializedName("buffer_fill") val bufferFill: String? = null,
+    @SerializedName("reading_created") val readingCreated: Boolean = false,
+    val reading: BleInferredReadingDto? = null,
+    val message: String? = null
+)
+
 // ─── Trends ───
 data class TrendDataPoint(
     val timestamp: Long,
@@ -101,6 +128,7 @@ data class TrendResponse(
 data class ProfileUpdateRequest(
     val name: String? = null,
     val email: String? = null,
+    @SerializedName("date_of_birth") val dateOfBirth: String? = null,
     val gender: String? = null,
     val weight: String? = null,
     val height: String? = null,
@@ -111,6 +139,65 @@ data class ProfileResponse(
     val success: Boolean,
     val user: UserDto?,
     val message: String?
+)
+
+data class UserSettingsDto(
+    val language: String,
+    @SerializedName("push_notifications_enabled") val pushNotificationsEnabled: Boolean,
+    @SerializedName("weekly_reports_enabled") val weeklyReportsEnabled: Boolean
+)
+
+data class SettingsUpdateRequest(
+    val language: String,
+    @SerializedName("push_notifications_enabled") val pushNotificationsEnabled: Boolean,
+    @SerializedName("weekly_reports_enabled") val weeklyReportsEnabled: Boolean
+)
+
+data class SettingsResponse(
+    val success: Boolean,
+    val settings: UserSettingsDto?,
+    val message: String? = null
+)
+
+data class NotificationDto(
+    val id: String,
+    val title: String,
+    val message: String,
+    val type: String,
+    val timestamp: Long,
+    @SerializedName("is_read") val isRead: Boolean
+)
+
+data class NotificationsResponse(
+    val success: Boolean,
+    val notifications: List<NotificationDto> = emptyList(),
+    @SerializedName("unread_count") val unreadCount: Int = 0,
+    val message: String? = null
+)
+
+data class DailyReportDto(
+    val date: String,
+    @SerializedName("avg_systolic") val avgSystolic: Float? = null,
+    @SerializedName("avg_diastolic") val avgDiastolic: Float? = null,
+    @SerializedName("avg_heart_rate") val avgHeartRate: Float? = null,
+    @SerializedName("reading_count") val readingCount: Int = 0
+)
+
+data class HealthReportDto(
+    @SerializedName("week_start") val weekStart: String,
+    @SerializedName("week_end") val weekEnd: String,
+    @SerializedName("avg_systolic") val avgSystolic: Float? = null,
+    @SerializedName("avg_diastolic") val avgDiastolic: Float? = null,
+    @SerializedName("avg_heart_rate") val avgHeartRate: Float? = null,
+    @SerializedName("readings_count") val readingsCount: Int = 0,
+    @SerializedName("health_score") val healthScore: Int = 0,
+    @SerializedName("daily_summaries") val dailySummaries: List<DailyReportDto> = emptyList()
+)
+
+data class HealthReportResponse(
+    val success: Boolean,
+    val report: HealthReportDto? = null,
+    val message: String? = null
 )
 
 // ─── PPG Signal ───

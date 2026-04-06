@@ -149,4 +149,21 @@ class FrameProcessResult(BaseModel):
     reading_id: Optional[str] = None
     seq_num: int
     quality: float
+    buffer_fill: Optional[str] = None
+    reading_created: bool = False
+    reading: Optional["InferredReading"] = None
     message: Optional[str] = None
+
+
+class InferredReading(BaseModel):
+    """A BP reading inferred from a completed BLE frame window."""
+    timestamp: int
+    systolic: int
+    diastolic: int
+    heart_rate: int
+    ptt: float
+    quality: int
+    category: str
+
+
+FrameProcessResult.model_rebuild()

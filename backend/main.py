@@ -13,6 +13,7 @@ from backend.database import create_tables, SensorSessionLocal
 
 # Import routers
 from backend.routers import auth, dashboard, readings, trends, reports, notifications, profile
+from backend.routers import settings as settings_router
 from backend.routers import ble as ble_router
 
 
@@ -22,19 +23,31 @@ async def lifespan(app: FastAPI):
     # Startup: create PostgreSQL tables
     create_tables()
 
-    # Startup: launch BLE manager + data pipeline
-    from ble.manager import init_ble_manager
-    from ble.data_manager import DataManager
-    dm = DataManager(db_factory=SensorSessionLocal)
-    ble = init_ble_manager(dm)
-    await ble.start()
+    # Startup: always initialize the shared data pipeline so mobile BLE uploads
+    # can be processed even when the server itself never scans for BLE devices.
+    from ble.data_manager import init_data_manager
+
+    dm = init_data_manager(db_factory=SensorSessionLocal)
+
+    # Optional server-side BLE manager for local hardware lab setups only.
+    if settings.enable_server_ble:
+        from ble.manager import init_ble_manager
+
+        ble = init_ble_manager(dm)
+        await ble.start()
+
     print(f"[OK] {settings.app_name} Backend started!")
 
     yield
 
-    # Shutdown: stop BLE
-    from ble.manager import get_ble_manager
-    await get_ble_manager().stop()
+    # Shutdown: stop the optional server-side BLE manager if it was enabled.
+    if settings.enable_server_ble:
+        from ble.manager import get_ble_manager
+
+        ble = get_ble_manager()
+        if ble is not None:
+            await ble.stop()
+
     print(f"[BYE] {settings.app_name} Backend shutting down...")
 
 
@@ -77,6 +90,7 @@ app.include_router(trends.router, prefix="/trends", tags=["Trends"])
 app.include_router(reports.router, prefix="/reports", tags=["Reports"])
 app.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 app.include_router(profile.router, prefix="/profile", tags=["Profile"])
+app.include_router(settings_router.router, prefix="/settings", tags=["Settings"])
 app.include_router(ble_router.router, prefix="/ble", tags=["BLE"])
 
 

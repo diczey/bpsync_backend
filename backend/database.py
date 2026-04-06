@@ -149,6 +149,9 @@ def create_tables():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS weight VARCHAR",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS height VARCHAR",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_checkup_date VARCHAR",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_language VARCHAR DEFAULT 'en'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS push_notifications_enabled BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_reports_enabled BOOLEAN DEFAULT FALSE",
     ]
 
     try:

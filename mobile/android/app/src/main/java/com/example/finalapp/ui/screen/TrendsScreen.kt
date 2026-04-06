@@ -127,11 +127,14 @@ fun TrendsScreen(
 
             // Extract specific trends from backend DTOs
             val sysTrend = uiState.trends.find { it.type == "systolic" }
+            val diaTrend = uiState.trends.find { it.type == "diastolic" }
             val hrTrend = uiState.trends.find { it.type == "heart_rate" }
             val spo2Trend = uiState.trends.find { it.type == "spo2" }
 
             // Trend Charts
-            TrendChartSection(title = "Blood Pressure", icon = Icons.Default.Favorite, color = ErrorRed, unit = "mmHg", trend = sysTrend)
+            TrendChartSection(title = "Systolic Pressure", icon = Icons.Default.Favorite, color = ErrorRed, unit = "mmHg", trend = sysTrend)
+            Spacer(modifier = Modifier.height(20.dp))
+            TrendChartSection(title = "Diastolic Pressure", icon = Icons.Default.FavoriteBorder, color = OrangeMain, unit = "mmHg", trend = diaTrend)
             Spacer(modifier = Modifier.height(20.dp))
             TrendChartSection(title = "Heart Rate", icon = Icons.Default.FavoriteBorder, color = ActivePink, unit = "BPM", trend = hrTrend)
             Spacer(modifier = Modifier.height(20.dp))

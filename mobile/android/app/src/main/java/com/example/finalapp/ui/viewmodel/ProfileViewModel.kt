@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 
 data class ProfileUiState(
     val name: String = "John Doe",
+    val dateOfBirth: String = "",
     val age: String = "--",
     val gender: String = "Male",
     val weight: String = "75",
@@ -66,7 +67,7 @@ class ProfileViewModel(
     }
 
     fun updateName(name: String) = updateField { it.copy(name = name) }
-    fun updateAge(age: String) = updateField { it.copy(age = age) }
+    fun updateDateOfBirth(dateOfBirth: String) = updateField { it.copy(dateOfBirth = dateOfBirth) }
     fun updateGender(gender: String) = updateField { it.copy(gender = gender) }
     fun updateWeight(weight: String) = updateField { it.copy(weight = weight) }
     fun updateHeight(height: String) = updateField { it.copy(height = height) }
@@ -74,12 +75,22 @@ class ProfileViewModel(
 
     private fun saveProfile() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
             val currentState = _uiState.value
+            val normalizedDateOfBirth = normalizeDateOfBirth(currentState.dateOfBirth)
+
+            if (currentState.dateOfBirth.isNotBlank() && normalizedDateOfBirth == null) {
+                _uiState.update {
+                    it.copy(message = "Date of birth must be a valid date.", isLoading = false)
+                }
+                return@launch
+            }
+
+            _uiState.update { it.copy(isLoading = true) }
             when (
                 val result = profileRepository.saveProfile(
                     name = currentState.name,
                     email = currentState.email,
+                    dateOfBirth = normalizedDateOfBirth ?: "",
                     gender = currentState.gender,
                     weight = currentState.weight,
                     height = currentState.height
@@ -101,6 +112,7 @@ class ProfileViewModel(
         _uiState.update {
             it.copy(
                 name = user.name.ifBlank { it.name },
+                dateOfBirth = user.dateOfBirth?.ifBlank { null } ?: it.dateOfBirth,
                 age = calculateAge(user.dateOfBirth) ?: it.age,
                 gender = user.gender?.ifBlank { null } ?: it.gender,
                 weight = user.weight?.ifBlank { null } ?: it.weight,
@@ -131,6 +143,27 @@ class ProfileViewModel(
         } ?: return null
 
         return Period.between(birthDate, LocalDate.now()).years.toString()
+    }
+
+    private fun normalizeDateOfBirth(dateOfBirth: String): String? {
+        val value = dateOfBirth.trim()
+        if (value.isBlank()) return null
+
+        val formatters = listOf(
+            DateTimeFormatter.ISO_LOCAL_DATE,
+            DateTimeFormatter.ofPattern("d/M/yyyy"),
+            DateTimeFormatter.ofPattern("dd/MM/yyyy")
+        )
+
+        val parsed = formatters.firstNotNullOfOrNull { formatter ->
+            try {
+                LocalDate.parse(value, formatter)
+            } catch (_: DateTimeParseException) {
+                null
+            }
+        } ?: return null
+
+        return parsed.format(DateTimeFormatter.ISO_LOCAL_DATE)
     }
 
     private fun updateField(update: (ProfileUiState) -> ProfileUiState) {

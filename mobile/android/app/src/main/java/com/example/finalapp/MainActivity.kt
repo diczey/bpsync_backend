@@ -8,12 +8,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.example.finalapp.data.repository.BleRepository
+import com.example.finalapp.data.repository.SessionStore
+import com.example.finalapp.data.repository.SettingsStore
 import com.example.finalapp.ui.navigation.AppNavHost
 import com.example.finalapp.ui.theme.FinalAppTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SessionStore.initialize(applicationContext)
+        SettingsStore.initialize(applicationContext)
         BleRepository(applicationContext)
         setContent {
             FinalAppTheme {

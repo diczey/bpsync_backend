@@ -45,6 +45,7 @@ class ProfileRepository(
     suspend fun saveProfile(
         name: String,
         email: String,
+        dateOfBirth: String,
         gender: String,
         weight: String,
         height: String,
@@ -57,6 +58,7 @@ class ProfileRepository(
             val request = com.example.finalapp.data.model.ProfileUpdateRequest(
                 name = name,
                 email = email,
+                dateOfBirth = dateOfBirth.ifBlank { null },
                 gender = gender.ifBlank { null },
                 weight = weight.ifBlank { null },
                 height = height.ifBlank { null },

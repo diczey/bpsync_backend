@@ -8,10 +8,13 @@ Prefix: /ble  (registered in backend/main.py)
 """
 
 from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Optional
+from typing import Optional
 from pydantic import BaseModel
 
 from ble.manager import get_ble_manager, BLEManager, WRIST_DEVICE_NAME, SCAN_TIMEOUT_S
+from ble.data_manager import get_data_manager, init_data_manager, DataManager
+from ble.frame import FrameProcessResult
+from backend.database import SensorSessionLocal
 from backend.utils.security import get_current_user
 from backend.models.user import User
 from backend.utils.sensor_identity import canonical_sensor_user_key
@@ -40,6 +43,14 @@ def require_ble() -> BLEManager:
     return mgr
 
 
+def require_data_manager() -> DataManager:
+    """Return the shared DataManager used by BLE uploads and optional server BLE."""
+    mgr = get_data_manager()
+    if mgr is None:
+        mgr = init_data_manager(db_factory=SensorSessionLocal)
+    return mgr
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 #  REQUEST / RESPONSE MODELS
 # ──────────────────────────────────────────────────────────────────────────────
@@ -63,6 +74,12 @@ class ScanResult(BaseModel):
     device_name: Optional[str] = None
     device_address: Optional[str] = None
     message: str
+
+
+class MobileFrameUploadRequest(BaseModel):
+    raw_frame: str
+    source_device_name: Optional[str] = None
+    source_device_address: Optional[str] = None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -148,11 +165,34 @@ async def stop_streaming(
     return CommandResponse(success=False, message="Command could not be sent.")
 
 
+@router.post("/mobile-frame", response_model=FrameProcessResult, summary="Upload a BLE frame from the mobile app")
+async def ingest_mobile_frame(
+    request: MobileFrameUploadRequest,
+    data_manager: DataManager = Depends(require_data_manager),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Accept a raw JSON BLE frame uploaded by the Android app after it receives a
+    Notify packet from the wrist module.
+
+    This is the primary production flow:
+      wrist module -> Android phone -> POST /ble/mobile-frame -> DataManager
+    """
+    raw_frame = (request.raw_frame or "").strip()
+    if not raw_frame:
+        raise HTTPException(status_code=400, detail="raw_frame is required.")
+
+    data_manager.set_user_context(current_user.id, current_user.age)
+    result = await data_manager.process_frame(raw_frame, user_id=current_user.id)
+    if not result.success:
+        raise HTTPException(status_code=400, detail=result.message or "BLE frame processing failed.")
+    return result
+
+
 @router.get("/stats", summary="DataManager frame statistics")
 async def get_data_stats(
-    ble: BLEManager = Depends(require_ble),
+    data_manager: DataManager = Depends(require_data_manager),
     current_user: User = Depends(get_current_user),
 ):
     """Frame processing stats: processed, failed, success_rate, bp_inferences, buffer_fill."""
-    status = ble.get_status()
-    return status.get("data_stats", {})
+    return data_manager.get_stats(current_user.id)

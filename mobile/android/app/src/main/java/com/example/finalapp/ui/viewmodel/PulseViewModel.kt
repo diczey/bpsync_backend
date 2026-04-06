@@ -22,6 +22,7 @@ data class PulseUiState(
     val statusLabel: String = "Waiting",
     val pattern24h: List<PulseDataPoint> = emptyList(),
     val ecgWaveformPoints: List<Float> = emptyList(),
+    val backendMessage: String? = null,
     val isMonitoring: Boolean = true,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
@@ -72,6 +73,7 @@ class PulseViewModel(
                             statusLabel = result.data.statusLabel,
                             pattern24h = result.data.pattern24h,
                             ecgWaveformPoints = result.data.ecgWaveformPoints,
+                            backendMessage = result.data.message,
                             isLoading = false,
                             errorMessage = null
                         )

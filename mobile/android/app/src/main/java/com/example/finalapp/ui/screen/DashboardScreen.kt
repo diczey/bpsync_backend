@@ -20,11 +20,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -137,6 +139,8 @@ fun DashboardScreen(
                         Triple("Heart Rate", Screen.Pulse, Icons.Default.FavoriteBorder),
                         Triple("PPG Signal", Screen.PPG, Icons.Default.Wifi),
                         Triple("Measurements", Screen.Measurements, Icons.Default.History),
+                        Triple("Notifications", Screen.Notifications, Icons.Default.Notifications),
+                        Triple("Reports", Screen.Reports, Icons.Default.Description),
                         Triple("Profile", Screen.Profile, Icons.Default.Person),
                         Triple("Settings", Screen.Settings, Icons.Default.Settings)
                     )
@@ -340,7 +344,7 @@ fun DashboardScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
                 ) {
                     Text(
-                        if (uiState.isLoading) "Refreshing..." else "Show Latest Measurement",
+                        if (uiState.isLoading) "Refreshing..." else "Refresh Latest Measurement",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
