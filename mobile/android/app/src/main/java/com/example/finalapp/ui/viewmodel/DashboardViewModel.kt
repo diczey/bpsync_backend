@@ -143,6 +143,18 @@ class DashboardViewModel(
         }
     }
 
+    private fun hydrateFromLocalReading() {
+        val latest = ReadingRepository.latestReading() ?: return
+        _uiState.update {
+            it.copy(
+                systolic = latest.systolic,
+                diastolic = latest.diastolic,
+                pulse = latest.pulse,
+                spo2 = latest.spo2
+            )
+        }
+    }
+
     private fun observeReadings() {
         viewModelScope.launch {
             ReadingRepository.readings.collect { readings ->
