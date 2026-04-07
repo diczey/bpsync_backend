@@ -128,11 +128,11 @@ data class BleFrameUploadResponse(
 
 data class PredictionModelInfoResponse(
     val success: Boolean,
-    @SerializedName("requested_model") val requestedModel: String = "auto",
-    @SerializedName("active_model") val activeModel: String = "xgboost",
-    @SerializedName("active_model_label") val activeModelLabel: String = "XGBoost",
+    @SerializedName("requested_model") val requestedModel: String = "cnn",
+    @SerializedName("active_model") val activeModel: String = "cnn_lstm",
+    @SerializedName("active_model_label") val activeModelLabel: String = "CNN-LSTM",
     @SerializedName("cnn_model_ready") val cnnModelReady: Boolean = false,
-    @SerializedName("live_ble_supports_cnn") val liveBleSupportsCnn: Boolean = false,
+    @SerializedName("live_ble_supports_cnn") val liveBleSupportsCnn: Boolean = true,
     @SerializedName("cnn_missing_requirements") val cnnMissingRequirements: List<String> = emptyList(),
     val message: String? = null
 )

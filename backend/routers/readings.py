@@ -21,8 +21,7 @@ from backend.utils.sensor_identity import (
     sensor_user_clause,
     sensor_user_params,
 )
-from backend.services.ml_service import get_bp_model
-from backend.services.bp_model_service import get_prediction_service, predict_live_blood_pressure
+from backend.services.bp_model_service import get_prediction_service
 
 router = APIRouter()
 
@@ -333,34 +332,18 @@ async def predict_bp(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Trigger an XGBoost BP prediction from PTT + heart-rate values.
+    Feature-based preview prediction has been removed.
 
-    Used by the mobile BLE screen after a streaming session to preview
-    the predicted BP before it is stored via POST /readings.
-    Uses the user's calculated age (from date_of_birth) for better accuracy.
+    Blood pressure predictions now require live BLE waveform batches so the
+    CNN-LSTM model can infer from ECG + PPG_RED + PPG_IR directly.
     """
-    try:
-        result = predict_live_blood_pressure(
-            ptt=request.ptt,
-            heart_rate=request.heart_rate,
-            age=current_user.age,        # Derived from User.date_of_birth property
-            ptt_std=request.ptt_std or 15,
-        )
-        msg = result.get("message") or '{}/{} mmHg - {}'.format(
-            result['systolic'],
-            result['diastolic'],
-            result['category'],
-        )
-        return BPPredictionResponse(
-            success=True,
-            systolic=result['systolic'],
-            diastolic=result['diastolic'],
-            category=result['category'],
-            model=result.get('model_label'),
-            message=msg,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail=(
+            "PTT-based prediction has been removed. Stream live BLE waveform batches "
+            "to use the CNN-LSTM blood pressure model."
+        ),
+    )
 
 
 @router.post('/calibrate-bp')
@@ -369,29 +352,18 @@ async def calibrate_bp(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Calibrate the XGBoost model with a cuff-measured reference reading.
+    Feature-based calibration has been removed.
 
-    The mobile sends an actual cuff measurement alongside the PTT that was
-    measured at the same time. The model adjusts its per-user offset so
-    future predictions are more accurate for this individual.
+    Calibration now starts automatically after a successful BLE connection and
+    continues from live waveform readings during the first 3 days.
     """
-    try:
-        model = get_bp_model()
-        model.calibrate(
-            measured_systolic=request.measured_systolic,
-            measured_diastolic=request.measured_diastolic,
-            ptt=request.ptt,
-            heart_rate=request.heart_rate,
-            age=current_user.age,
-        )
-        return {
-            'success': True,
-            'message': 'Calibration done. Reference: {}/{} mmHg'.format(
-                request.measured_systolic, request.measured_diastolic
-            )
-        }
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail=(
+            "Feature-based calibration has been removed. Connect the wristband and "
+            "stream waveform BLE data to start CNN-LSTM calibration automatically."
+        ),
+    )
 
 
 @router.get('/model-info')
@@ -399,14 +371,11 @@ async def get_model_info(current_user: User = Depends(get_current_user)):
     """
     Return active BP model information for the live BLE pipeline.
 
-    This makes it explicit whether the backend is using the current XGBoost
+    The backend is now CNN-only, so this endpoint reports whether the
     feature-based inference or Göksu's CNN-LSTM waveform model.
     """
-    model = get_bp_model()
     info = get_prediction_service().model_status()
     return {
         'success': True,
-        'model_loaded': model.is_loaded,
-        'has_calibration': model.calibration is not None,
         **info,
     }

@@ -451,7 +451,7 @@ private object AndroidBleManager {
             "frames_uploaded" to 0,
             "upload_failures" to 0,
             "measurements_ready" to 0,
-            "buffer_fill" to "0/100",
+            "buffer_fill" to "0/25",
             "last_seq" to 0
         )
     }

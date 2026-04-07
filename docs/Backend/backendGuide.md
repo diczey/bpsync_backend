@@ -29,7 +29,7 @@ Mobile App (Android)
 | Sensor DB | TimescaleDB |
 | Orchestration | Docker Compose |
 | Auth | JWT (python-jose) |
-| ML | XGBoost (BP inference from PTT) |
+| ML | CNN-LSTM (BP inference from waveform BLE batches) |
 
 ---
 

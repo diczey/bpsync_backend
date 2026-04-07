@@ -40,9 +40,8 @@ class Settings(BaseSettings):
     enable_server_ble: bool = False
 
     # Blood pressure inference backend
-    # "auto" keeps the current XGBoost live pipeline and upgrades to CNN only
-    # when the runtime has the required raw waveform window and artifacts.
-    bp_model_backend: str = "auto"
+    # The app now uses only the CNN-LSTM waveform model.
+    bp_model_backend: str = "cnn"
     
     @property
     def cors_origins(self) -> List[str]:

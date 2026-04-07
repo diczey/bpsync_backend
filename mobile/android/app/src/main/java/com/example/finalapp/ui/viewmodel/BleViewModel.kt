@@ -25,7 +25,7 @@ data class BleUiState(
     val statusSubtitle: String = "",
     val framesReceived: Int = 0,
     val framesUploaded: Int = 0,
-    val bufferFill: String = "0/100",
+    val bufferFill: String = "0/25",
     val measurementsReady: Int = 0,
     val lastMeasurement: String? = null,
     val activeModelLabel: String = "Checking...",
