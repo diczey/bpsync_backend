@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # The production architecture is wrist -> phone -> backend.
     # Keep server-side BLE scanning opt-in for local lab setups only.
     enable_server_ble: bool = False
+
+    # Blood pressure inference backend
+    # "auto" keeps the current XGBoost live pipeline and upgrades to CNN only
+    # when the runtime has the required raw waveform window and artifacts.
+    bp_model_backend: str = "auto"
     
     @property
     def cors_origins(self) -> List[str]:

@@ -6,6 +6,8 @@
  ║  Endpoints: /summary, /health-status, /pulse, /ppg/signal    ║
  ╚══════════════════════════════════════════════════════════════╝
 """
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -150,7 +152,85 @@ class HealthStatusResponse(BaseModel):
     blood_pressure_status: str
     heart_rate_status: str
     oxygen_status: str
+    calibration_started_at: Optional[int] = None
+    calibration_ready_at: Optional[int] = None
+    weekly_status_ready_at: Optional[int] = None
+    seconds_until_calibrated: int = 0
+    seconds_until_weekly_status: int = 0
+    tracking_day: int = 0
+    is_calibrated: bool = False
+    is_week_ready: bool = False
+    countdown_phase: str = "awaiting_device"
+    status_mode: str = "standard"
     message: Optional[str] = None
+
+
+def _utc(dt_value: Optional[datetime]) -> Optional[datetime]:
+    if dt_value is None:
+        return None
+    if dt_value.tzinfo is None:
+        return dt_value.replace(tzinfo=timezone.utc)
+    return dt_value.astimezone(timezone.utc)
+
+
+def _to_ms(dt_value: Optional[datetime]) -> Optional[int]:
+    utc_value = _utc(dt_value)
+    return int(utc_value.timestamp() * 1000) if utc_value else None
+
+
+def _classify_standard_bp(systolic: Optional[int], diastolic: Optional[int]) -> str:
+    if not systolic or not diastolic:
+        return "No Data"
+    if systolic < 90 or diastolic < 60:
+        return "Low"
+    if systolic >= 140 or diastolic >= 90:
+        return "High"
+    if systolic >= 120 or diastolic >= 80:
+        return "Elevated"
+    return "Normal"
+
+
+def _classify_personalized_bp(
+    systolic: Optional[int],
+    diastolic: Optional[int],
+    baseline_sys: Optional[float],
+    baseline_dia: Optional[float],
+) -> str:
+    if not systolic or not diastolic or baseline_sys is None or baseline_dia is None:
+        return _classify_standard_bp(systolic, diastolic)
+
+    sys_delta = systolic - baseline_sys
+    dia_delta = diastolic - baseline_dia
+
+    if sys_delta >= 12 or dia_delta >= 8:
+        return "High"
+    if sys_delta <= -12 or dia_delta <= -8:
+        return "Low"
+    if sys_delta >= 6 or dia_delta >= 4:
+        return "Elevated"
+    return "Normal"
+
+
+def _classify_standard_hr(heart_rate: Optional[int]) -> str:
+    if not heart_rate:
+        return "No Data"
+    if heart_rate < 60:
+        return "Low"
+    if heart_rate > 100:
+        return "High"
+    return "Normal"
+
+
+def _classify_personalized_hr(heart_rate: Optional[int], baseline_hr: Optional[float]) -> str:
+    if not heart_rate or baseline_hr is None:
+        return _classify_standard_hr(heart_rate)
+
+    delta = heart_rate - baseline_hr
+    if delta >= 12:
+        return "High"
+    if delta <= -12:
+        return "Low"
+    return "Normal"
 
 
 @router.get('/health-status', response_model=HealthStatusResponse)
@@ -159,20 +239,15 @@ async def get_health_status(
     db: Session = Depends(get_sensor_db),
 ):
     """
-    Return the derived health status based on the user's recent sensor data.
-    Uses the average of the last 7 days of readings to calculate a score.
-    """
-    rows = db.execute(
-        text(f'''
-            SELECT systolic, diastolic, heart_rate
-            FROM bp_readings
-            WHERE {sensor_user_clause()}
-              AND time >= NOW() - INTERVAL '7 days'
-        '''),
-        sensor_user_params(current_user),
-    ).fetchall()
+    Return a BLE-driven health status lifecycle.
 
-    if not rows:
+    Phase 1: first 3 days after the first successful BLE connection are used as
+    calibration days.
+    Phase 2: days 4-6 use the 3-day personalized baseline for daily labels.
+    Phase 3: from day 7 onward, a weekly health score is also returned.
+    """
+    calibration_started_at = _utc(current_user.ble_calibration_started_at)
+    if calibration_started_at is None:
         return HealthStatusResponse(
             success=False,
             health_score=0,
@@ -180,42 +255,193 @@ async def get_health_status(
             blood_pressure_status="No Data",
             heart_rate_status="No Data",
             oxygen_status="No Data",
-            message="Not enough readings to calculate status."
+            countdown_phase="awaiting_device",
+            status_mode="standard",
+            message="Connect your wristband to start the 3-day calibration countdown.",
         )
 
-    valid_sys = [r.systolic for r in rows if r.systolic is not None]
-    valid_dia = [r.diastolic for r in rows if r.diastolic is not None]
-    valid_hr  = [r.heart_rate for r in rows if r.heart_rate is not None]
+    now = datetime.now(timezone.utc)
+    calibration_ready_at = calibration_started_at + timedelta(days=3)
+    weekly_ready_at = calibration_started_at + timedelta(days=7)
+    is_calibrated = now >= calibration_ready_at
+    is_week_ready = now >= weekly_ready_at
+    seconds_until_calibrated = max(0, int((calibration_ready_at - now).total_seconds()))
+    seconds_until_weekly_status = max(0, int((weekly_ready_at - now).total_seconds()))
+    tracking_day = max(1, int((now - calibration_started_at).total_seconds() // 86400) + 1)
 
-    avg_sys = sum(valid_sys) / len(valid_sys) if valid_sys else 120
-    avg_hr  = sum(valid_hr) / len(valid_hr) if valid_hr else 70
+    latest_row = db.execute(
+        text(f'''
+            SELECT systolic, diastolic, heart_rate, spo2
+            FROM bp_readings
+            WHERE {sensor_user_clause()}
+            ORDER BY time DESC
+            LIMIT 1
+        '''),
+        sensor_user_params(current_user),
+    ).fetchone()
+
+    calibration_params = {
+        **sensor_user_params(current_user),
+        "calibration_started_at": calibration_started_at,
+        "calibration_ready_at": calibration_ready_at,
+    }
+    calibration_stats = db.execute(
+        text(f'''
+            SELECT
+                COUNT(*) AS reading_count,
+                AVG(systolic) AS avg_systolic,
+                AVG(diastolic) AS avg_diastolic,
+                AVG(heart_rate) AS avg_heart_rate
+            FROM bp_readings
+            WHERE {sensor_user_clause()}
+              AND time >= :calibration_started_at
+              AND time < :calibration_ready_at
+        '''),
+        calibration_params,
+    ).fetchone()
+
+    baseline_sys = float(calibration_stats.avg_systolic) if calibration_stats and calibration_stats.avg_systolic is not None else None
+    baseline_dia = float(calibration_stats.avg_diastolic) if calibration_stats and calibration_stats.avg_diastolic is not None else None
+    baseline_hr = float(calibration_stats.avg_heart_rate) if calibration_stats and calibration_stats.avg_heart_rate is not None else None
+    baseline_ready = bool(calibration_stats and (calibration_stats.reading_count or 0) > 0)
+
+    latest_sys = int(latest_row.systolic) if latest_row and latest_row.systolic is not None else None
+    latest_dia = int(latest_row.diastolic) if latest_row and latest_row.diastolic is not None else None
+    latest_hr = int(latest_row.heart_rate) if latest_row and latest_row.heart_rate is not None else None
+    latest_spo2 = int(latest_row.spo2) if latest_row and latest_row.spo2 is not None else None
+
+    if is_calibrated and baseline_ready:
+        status_mode = "personalized"
+        bp_status = _classify_personalized_bp(latest_sys, latest_dia, baseline_sys, baseline_dia)
+        hr_status = _classify_personalized_hr(latest_hr, baseline_hr)
+    else:
+        status_mode = "standard"
+        bp_status = _classify_standard_bp(latest_sys, latest_dia)
+        hr_status = _classify_standard_hr(latest_hr)
+
+    ox_status = "Normal" if latest_spo2 and latest_spo2 >= 95 else ("Low" if latest_spo2 else "No Data")
+
+    if not is_calibrated:
+        return HealthStatusResponse(
+            success=True,
+            health_score=0,
+            overall_status="Calibrating",
+            blood_pressure_status=bp_status,
+            heart_rate_status=hr_status,
+            oxygen_status=ox_status,
+            calibration_started_at=_to_ms(calibration_started_at),
+            calibration_ready_at=_to_ms(calibration_ready_at),
+            weekly_status_ready_at=_to_ms(weekly_ready_at),
+            seconds_until_calibrated=seconds_until_calibrated,
+            seconds_until_weekly_status=seconds_until_weekly_status,
+            tracking_day=tracking_day,
+            is_calibrated=False,
+            is_week_ready=False,
+            countdown_phase="calibration",
+            status_mode=status_mode,
+            message="3-day BLE calibration is in progress.",
+        )
+
+    if not is_week_ready:
+        return HealthStatusResponse(
+            success=True,
+            health_score=0,
+            overall_status="Personalized Tracking",
+            blood_pressure_status=bp_status,
+            heart_rate_status=hr_status,
+            oxygen_status=ox_status,
+            calibration_started_at=_to_ms(calibration_started_at),
+            calibration_ready_at=_to_ms(calibration_ready_at),
+            weekly_status_ready_at=_to_ms(weekly_ready_at),
+            seconds_until_calibrated=0,
+            seconds_until_weekly_status=seconds_until_weekly_status,
+            tracking_day=tracking_day,
+            is_calibrated=True,
+            is_week_ready=False,
+            countdown_phase="personalized",
+            status_mode=status_mode,
+            message="Calibration completed. Personalized daily labels are active until day 7.",
+        )
+
+    weekly_window_start = max(calibration_started_at, now - timedelta(days=7))
+    weekly_stats = db.execute(
+        text(f'''
+            SELECT
+                COUNT(*) AS reading_count,
+                AVG(systolic) AS avg_systolic,
+                AVG(diastolic) AS avg_diastolic,
+                AVG(heart_rate) AS avg_heart_rate
+            FROM bp_readings
+            WHERE {sensor_user_clause()}
+              AND time >= :weekly_window_start
+              AND time <= :weekly_window_end
+        '''),
+        {
+            **sensor_user_params(current_user),
+            "weekly_window_start": weekly_window_start,
+            "weekly_window_end": now,
+        },
+    ).fetchone()
+
+    if not weekly_stats or (weekly_stats.reading_count or 0) == 0:
+        return HealthStatusResponse(
+            success=False,
+            health_score=0,
+            overall_status="No Data",
+            blood_pressure_status=bp_status,
+            heart_rate_status=hr_status,
+            oxygen_status=ox_status,
+            calibration_started_at=_to_ms(calibration_started_at),
+            calibration_ready_at=_to_ms(calibration_ready_at),
+            weekly_status_ready_at=_to_ms(weekly_ready_at),
+            seconds_until_calibrated=0,
+            seconds_until_weekly_status=0,
+            tracking_day=tracking_day,
+            is_calibrated=True,
+            is_week_ready=True,
+            countdown_phase="weekly_ready",
+            status_mode=status_mode,
+            message="Not enough weekly readings to calculate health status.",
+        )
+
+    avg_week_sys = float(weekly_stats.avg_systolic) if weekly_stats.avg_systolic is not None else None
+    avg_week_dia = float(weekly_stats.avg_diastolic) if weekly_stats.avg_diastolic is not None else None
+    avg_week_hr = float(weekly_stats.avg_heart_rate) if weekly_stats.avg_heart_rate is not None else None
+
+    if baseline_ready:
+        weekly_bp_status = _classify_personalized_bp(
+            int(avg_week_sys) if avg_week_sys is not None else None,
+            int(avg_week_dia) if avg_week_dia is not None else None,
+            baseline_sys,
+            baseline_dia,
+        )
+        weekly_hr_status = _classify_personalized_hr(
+            int(avg_week_hr) if avg_week_hr is not None else None,
+            baseline_hr,
+        )
+    else:
+        weekly_bp_status = _classify_standard_bp(
+            int(avg_week_sys) if avg_week_sys is not None else None,
+            int(avg_week_dia) if avg_week_dia is not None else None,
+        )
+        weekly_hr_status = _classify_standard_hr(int(avg_week_hr) if avg_week_hr is not None else None)
 
     score = 100
-    
-    # Blood Pressure Status Rules
-    if avg_sys < 90 or avg_sys >= 140:
-        bp_status = "Attention Required"
-        score -= 20
-    elif avg_sys >= 130:
-        bp_status = "Stage 1 Hypertension"
-        score -= 15
-    elif avg_sys >= 120:
-        bp_status = "Elevated"
-        score -= 5
-    else:
-        bp_status = "Optimal"
+    if weekly_bp_status == "High":
+        score -= 22
+    elif weekly_bp_status == "Low":
+        score -= 18
+    elif weekly_bp_status == "Elevated":
+        score -= 10
 
-    # Heart Rate Status Rules
-    if avg_hr < 60 or avg_hr > 100:
-        hr_status = "Attention Required"
-        score -= 15
-    else:
-        hr_status = "Normal"
+    if weekly_hr_status == "High":
+        score -= 14
+    elif weekly_hr_status == "Low":
+        score -= 10
 
-    # Oxygen Status (Placeholder until actual sensor integration)
-    ox_status = "Normal"
+    if ox_status == "Low":
+        score -= 8
 
-    # Overall Status
     if score >= 90:
         overall = "Excellent"
     elif score >= 75:
@@ -227,11 +453,22 @@ async def get_health_status(
 
     return HealthStatusResponse(
         success=True,
-        health_score=score,
+        health_score=max(0, score),
         overall_status=overall,
-        blood_pressure_status=bp_status,
-        heart_rate_status=hr_status,
+        blood_pressure_status=weekly_bp_status,
+        heart_rate_status=weekly_hr_status,
         oxygen_status=ox_status,
+        calibration_started_at=_to_ms(calibration_started_at),
+        calibration_ready_at=_to_ms(calibration_ready_at),
+        weekly_status_ready_at=_to_ms(weekly_ready_at),
+        seconds_until_calibrated=0,
+        seconds_until_weekly_status=0,
+        tracking_day=tracking_day,
+        is_calibrated=True,
+        is_week_ready=True,
+        countdown_phase="weekly_ready",
+        status_mode=status_mode,
+        message="7-day personalized health status is ready.",
     )
 
 

@@ -8,7 +8,7 @@ android {
     namespace = "com.example.finalapp"
     compileSdk = 36
 
-    val apiBaseUrl = providers.gradleProperty("API_BASE_URL")
+    val releaseApiBaseUrl = providers.gradleProperty("API_BASE_URL")
         .orElse("https://bpsyncbackend-production.up.railway.app/")
 
     defaultConfig {
@@ -17,12 +17,21 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-        buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl.get()}\"")
+        buildConfigField("String", "API_BASE_URL", "\"${releaseApiBaseUrl.get()}\"")
+        buildConfigField("String", "PHONE_DEBUG_API_BASE_URL", "\"${releaseApiBaseUrl.get()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
+        debug {
+            val debugApiBaseUrl = providers.gradleProperty("DEBUG_API_BASE_URL")
+                .orElse("http://10.0.2.2:8000/")
+            val phoneDebugApiBaseUrl = providers.gradleProperty("PHONE_DEBUG_API_BASE_URL")
+                .orElse("http://192.168.1.100:8000/")
+            buildConfigField("String", "API_BASE_URL", "\"${debugApiBaseUrl.get()}\"")
+            buildConfigField("String", "PHONE_DEBUG_API_BASE_URL", "\"${phoneDebugApiBaseUrl.get()}\"")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

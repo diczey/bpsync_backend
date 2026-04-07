@@ -14,6 +14,9 @@ interface ApiService {
     @GET("dashboard/summary")
     suspend fun getDashboardSummary(@Header("Authorization") token: String): Response<DashboardResponse>
 
+    @GET("dashboard/health-status")
+    suspend fun getHealthStatus(@Header("Authorization") token: String): Response<HealthStatusResponseDto>
+
     @GET("readings")
     suspend fun getReadings(@Header("Authorization") token: String): Response<HealthReadingsResponse>
 
@@ -74,6 +77,11 @@ interface ApiService {
     @GET("ble/status")
     suspend fun getBleStatus(@Header("Authorization") token: String): Response<BLEStatusResponse>
 
+    @GET("readings/model-info")
+    suspend fun getPredictionModelInfo(
+        @Header("Authorization") token: String
+    ): Response<PredictionModelInfoResponse>
+
     @POST("ble/scan")
     suspend fun scanBle(@Header("Authorization") token: String): Response<ScanResult>
 
@@ -88,6 +96,11 @@ interface ApiService {
         @Header("Authorization") token: String,
         @Body request: BleFrameUploadRequest
     ): Response<BleFrameUploadResponse>
+
+    @POST("ble/mobile-connected")
+    suspend fun notifyMobileBleConnected(
+        @Header("Authorization") token: String
+    ): Response<CommandResponse>
 
     @GET("trends")
     suspend fun getTrends(

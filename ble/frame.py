@@ -1,55 +1,31 @@
 """
-BLE Frame Schema — BPSync Wrist Module Firmware JSON Packet
+BLE frame schemas for wrist-module JSON packets.
 
-The wrist module (Seeed XIAO nRF52840) sends a ~175-byte JSON frame
-at 10 Hz via the BLE Notify characteristic.
-
-This module contains Pydantic classes and helper functions that validate
-the firmware output.
+The backend now accepts two live firmware shapes:
+- Legacy scalar frames with single pi/pr values at 10 Hz
+- New waveform batch frames with ECG[10] + PPG IR/RED[8] batches at 25 Hz
 """
 
+from __future__ import annotations
+
 import json
-from typing import Optional
+from typing import Any, Optional
+
 from pydantic import BaseModel, Field, model_validator
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  RAW BLE FRAME
-#  Firmware fields are mapped one-to-one; abbreviated names are kept
-#  because exact key matching is required for JSON parsing.
-# ──────────────────────────────────────────────────────────────────────────────
+RawPpgValue = int | list[int]
+
+
 class BLEFrame(BaseModel):
-    """
-    Raw BLE JSON frame received from the wrist module.
+    """Raw BLE JSON frame received from the wrist module."""
 
-    Field names match the firmware buildJSON() function exactly:
-      ts  → device uptime (ms)
-      sq  → sequence number (increments each frame)
-      pi  → PPG IR raw value (MAX30102)
-      pr  → PPG Red raw value (MAX30102)
-      ax  → wrist accelerometer X (±2g, 16384 = 1g)
-      ay  → wrist accelerometer Y
-      az  → wrist accelerometer Z
-      gx  → wrist gyroscope X (±250 °/s)
-      gy  → wrist gyroscope Y
-      gz  → wrist gyroscope Z
-      tp  → skin temperature °C (MCP9808)
-      ep  → ECG R-peak flag 0/1 (from chest module)
-      qi_w → wrist signal quality 0/1
-      qi_c → chest signal quality 0/1
-      qi   → combined signal quality 0/1 (qi_w AND qi_c)
-      bt  → battery percentage (0-100)
-    """
+    ts: int = Field(..., description="Device uptime in milliseconds")
+    sq: int = Field(..., description="Frame sequence number")
 
-    # -- Timestamp and packet identity ----------------------------------------
-    ts: int = Field(..., description="Device uptime (milliseconds)")
-    sq: int = Field(..., description="Sequence number")
+    pi: RawPpgValue = Field(..., description="PPG IR sample or batch")
+    pr: RawPpgValue = Field(..., description="PPG RED sample or batch")
 
-    # -- PPG data (MAX30102) --------------------------------------------------
-    pi: int = Field(..., ge=0, description="PPG IR raw value")
-    pr: int = Field(..., ge=0, description="PPG Red raw value")
-
-    # -- Wrist IMU (MPU6050) --------------------------------------------------
     ax: int = Field(..., description="Wrist accelerometer X")
     ay: int = Field(..., description="Wrist accelerometer Y")
     az: int = Field(..., description="Wrist accelerometer Z")
@@ -57,94 +33,122 @@ class BLEFrame(BaseModel):
     gy: int = Field(..., description="Wrist gyroscope Y")
     gz: int = Field(..., description="Wrist gyroscope Z")
 
-    # -- Temperature (MCP9808) ------------------------------------------------
-    tp: float = Field(..., description="Skin temperature (°C)")
+    tp: float = Field(..., description="Skin temperature in Celsius")
 
-    # -- Chest module data (ECG — no chest IMU)
-    ep: int = Field(0, ge=0, le=1, description="ECG R-peak flag (0/1)")
+    ep: int = Field(0, ge=0, le=1, description="ECG R-peak flag")
+    cs: Optional[int] = Field(None, description="Chest packet sequence number")
+    ecg: Optional[list[int]] = Field(None, description="Raw ECG batch")
 
-    # -- Signal quality -------------------------------------------------------
     qi_w: int = Field(0, ge=0, le=1, description="Wrist SQI")
     qi_c: int = Field(0, ge=0, le=1, description="Chest SQI")
-    qi: int   = Field(0, ge=0, le=1, description="Combined SQI")
-
-    # -- Battery --------------------------------------------------------------
+    qi: int = Field(0, ge=0, le=1, description="Combined SQI")
     bt: int = Field(100, ge=0, le=100, description="Battery percentage")
 
-    # ── Computed / derived fields ---------------------------------------------
-    # (not from firmware — populated by DataManager)
     received_at_ms: Optional[int] = Field(
-        None, description="Unix timestamp (ms) when the backend received the frame"
+        None,
+        description="Unix timestamp in milliseconds when the backend received the frame",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_batch_fields(cls, data: Any) -> Any:
+        """Accept array fields either as native JSON arrays or array strings."""
+        if not isinstance(data, dict):
+            return data
+
+        normalized = dict(data)
+        for key in ("pi", "pr", "ecg"):
+            value = normalized.get(key)
+            if isinstance(value, str):
+                stripped = value.strip()
+                if stripped.startswith("[") and stripped.endswith("]"):
+                    normalized[key] = json.loads(stripped)
+        return normalized
 
     @model_validator(mode="after")
     def validate_qi_consistency(self) -> "BLEFrame":
-        """
-        Logical consistency check for the combined qi value.
-        When chest is not connected, qi_c=0 but qi=qi_w is expected.
-        We can log anomalies but do not raise an exception,
-        because a firmware error should not cause early data loss.
-        """
-        # When chest is not connected (qi_c=0, wrist-only mode): qi=qi_w
         if self.qi_c == 0 and self.qi == self.qi_w:
-            return self  # wrist-only mode, normal
+            return self
         return self
-
-    # ── Helper methods --------------------------------------------------------
 
     @classmethod
     def parse_raw_json(cls, json_str: str) -> "BLEFrame":
-        """
-        Parses and validates a UTF-8 JSON string from the firmware.
-
-        Args:
-            json_str: JSON string produced by the firmware buildJSON() function.
-
-        Returns:
-            Validated BLEFrame instance.
-
-        Raises:
-            json.JSONDecodeError: If the JSON has a syntax error.
-            pydantic.ValidationError: If a required field is missing or has the wrong type.
-        """
         data = json.loads(json_str)
         return cls(**data)
 
+    @staticmethod
+    def _as_series(value: RawPpgValue | None) -> list[int]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [int(item) for item in value]
+        return [int(value)]
+
+    @property
+    def ppg_ir_batch(self) -> list[int]:
+        return self._as_series(self.pi)
+
+    @property
+    def ppg_red_batch(self) -> list[int]:
+        return self._as_series(self.pr)
+
+    @property
+    def ecg_batch(self) -> list[int]:
+        return [int(item) for item in (self.ecg or [])]
+
+    @property
+    def ppg_ir_latest(self) -> int:
+        batch = self.ppg_ir_batch
+        return batch[-1] if batch else 0
+
+    @property
+    def ppg_red_latest(self) -> int:
+        batch = self.ppg_red_batch
+        return batch[-1] if batch else 0
+
     @property
     def ppg_pair(self) -> tuple[int, int]:
-        """(IR, Red) PPG pair — useful for normalization or analysis."""
-        return (self.pi, self.pr)
+        return (self.ppg_ir_latest, self.ppg_red_latest)
 
     @property
     def wrist_accel(self) -> tuple[int, int, int]:
-        """Wrist accelerometer (ax, ay, az)."""
         return (self.ax, self.ay, self.az)
 
     @property
     def wrist_gyro(self) -> tuple[int, int, int]:
-        """Wrist gyroscope (gx, gy, gz)."""
         return (self.gx, self.gy, self.gz)
 
     @property
     def quality_percent(self) -> float:
-        """Returns signal quality in the 0-100 range (for ML pipeline)."""
         return float(self.qi * 100)
 
     @property
     def chest_connected(self) -> bool:
-        """Infers whether the chest module is connected."""
         return self.qi_c == 1
 
+    @property
+    def has_waveform_batch(self) -> bool:
+        return (
+            isinstance(self.pi, list)
+            and isinstance(self.pr, list)
+            and len(self.ecg_batch) > 0
+        )
+
+    @property
+    def frame_mode(self) -> str:
+        return "waveform" if self.has_waveform_batch else "legacy"
+
+    @property
+    def waveform_lengths(self) -> tuple[int, int, int]:
+        return (len(self.ecg_batch), len(self.ppg_red_batch), len(self.ppg_ir_batch))
+
     def to_dict(self) -> dict:
-        """Pydantic model_dump() wrapper — for serialization."""
         return self.model_dump()
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  RESPONSE SCHEMA — used by DataManager to return process results to the API
-# ──────────────────────────────────────────────────────────────────────────────
 class FrameProcessResult(BaseModel):
     """Result of DataManager.process_frame()."""
+
     success: bool
     reading_id: Optional[str] = None
     seq_num: int
@@ -157,6 +161,7 @@ class FrameProcessResult(BaseModel):
 
 class InferredReading(BaseModel):
     """A BP reading inferred from a completed BLE frame window."""
+
     timestamp: int
     systolic: int
     diastolic: int
@@ -164,6 +169,8 @@ class InferredReading(BaseModel):
     ptt: float
     quality: int
     category: str
+    model: Optional[str] = None
+    message: Optional[str] = None
 
 
 FrameProcessResult.model_rebuild()

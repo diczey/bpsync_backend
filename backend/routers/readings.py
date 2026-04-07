@@ -21,7 +21,8 @@ from backend.utils.sensor_identity import (
     sensor_user_clause,
     sensor_user_params,
 )
-from backend.services.ml_service import get_bp_model, predict_blood_pressure
+from backend.services.ml_service import get_bp_model
+from backend.services.bp_model_service import get_prediction_service, predict_live_blood_pressure
 
 router = APIRouter()
 
@@ -91,6 +92,7 @@ class BPPredictionResponse(BaseModel):
     systolic:  int
     diastolic: int
     category:  str
+    model:     Optional[str] = None
     message:   Optional[str] = None
 
 
@@ -338,18 +340,23 @@ async def predict_bp(
     Uses the user's calculated age (from date_of_birth) for better accuracy.
     """
     try:
-        result = predict_blood_pressure(
+        result = predict_live_blood_pressure(
             ptt=request.ptt,
             heart_rate=request.heart_rate,
             age=current_user.age,        # Derived from User.date_of_birth property
             ptt_std=request.ptt_std or 15,
         )
-        msg = '{}/{} mmHg - {}'.format(result['systolic'], result['diastolic'], result['category'])
+        msg = result.get("message") or '{}/{} mmHg - {}'.format(
+            result['systolic'],
+            result['diastolic'],
+            result['category'],
+        )
         return BPPredictionResponse(
             success=True,
             systolic=result['systolic'],
             diastolic=result['diastolic'],
             category=result['category'],
+            model=result.get('model_label'),
             message=msg,
         )
     except Exception as exc:
@@ -390,13 +397,16 @@ async def calibrate_bp(
 @router.get('/model-info')
 async def get_model_info(current_user: User = Depends(get_current_user)):
     """
-    Return XGBoost model status and feature importances.
-    Useful for the BLE/debug screen to confirm the model is loaded.
+    Return active BP model information for the live BLE pipeline.
+
+    This makes it explicit whether the backend is using the current XGBoost
+    feature-based inference or Göksu's CNN-LSTM waveform model.
     """
     model = get_bp_model()
+    info = get_prediction_service().model_status()
     return {
         'success': True,
         'model_loaded': model.is_loaded,
         'has_calibration': model.calibration is not None,
-        'feature_importance': model.get_feature_importance(),
+        **info,
     }

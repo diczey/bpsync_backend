@@ -19,6 +19,7 @@ import android.os.SystemClock
 import com.example.finalapp.data.api.ApiClient
 import com.example.finalapp.data.model.BLEStatusResponse
 import com.example.finalapp.data.model.BleFrameUploadRequest
+import com.example.finalapp.data.model.PredictionModelInfoResponse
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.LinkedHashMap
@@ -60,6 +61,7 @@ private object AndroidBleManager {
     private const val SCAN_DURATION_MS = 6_000L
     private const val CONNECTION_TIMEOUT_MS = 10_000L
     private const val SOURCE_TAG = "android-local-ble"
+    private const val DESIRED_MTU = 247
 
     private val WRIST_SERVICE_UUID: UUID = UUID.fromString("19B10000-E8F2-537E-4F6C-D104768A1214")
     private val DATA_CHAR_UUID: UUID = UUID.fromString("19B10001-E8F2-537E-4F6C-D104768A1214")
@@ -216,8 +218,23 @@ private object AndroidBleManager {
                                     dataStats = baseStats(device, streaming = false)
                                 )
                             )
+                            scope.launch {
+                                notifyMobileConnected()
+                            }
                             finish(RepositoryResult.Success("Connected to ${device.name}"))
-                            runCatching { gattInstance.discoverServices() }
+                            runCatching {
+                                gattInstance.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+                            }
+
+                            val mtuRequested = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                runCatching { gattInstance.requestMtu(DESIRED_MTU) }.getOrDefault(false)
+                            } else {
+                                false
+                            }
+
+                            if (!mtuRequested) {
+                                runCatching { gattInstance.discoverServices() }
+                            }
                         }
 
                         newState == BluetoothProfile.STATE_DISCONNECTED -> {
@@ -280,6 +297,20 @@ private object AndroidBleManager {
                         descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                         gattInstance.writeDescriptor(descriptor)
                     }
+                }
+
+                override fun onMtuChanged(gattInstance: BluetoothGatt, mtu: Int, status: Int) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        LocalBleStateStore.updateDataStats { current ->
+                            current.toMutableMap().apply {
+                                put("mtu", mtu)
+                            }
+                        }
+                    } else {
+                        updateLastError("MTU negotiation failed: $status")
+                    }
+
+                    runCatching { gattInstance.discoverServices() }
                 }
 
                 override fun onDescriptorWrite(
@@ -415,6 +446,7 @@ private object AndroidBleManager {
             "device_name" to device.name,
             "device_address" to device.address,
             "streaming" to streaming,
+            "mtu" to 23,
             "frames_received" to 0,
             "frames_uploaded" to 0,
             "upload_failures" to 0,
@@ -484,6 +516,12 @@ private object AndroidBleManager {
                             body.reading?.let { reading ->
                                 put("last_measurement", "${reading.systolic}/${reading.diastolic} • ${reading.heartRate} bpm")
                             }
+                            body.reading?.model?.takeIf { it.isNotBlank() }?.let { model ->
+                                val measurement = current["last_measurement"]?.toString().orEmpty()
+                                if (measurement.isNotBlank()) {
+                                    put("last_measurement", "$measurement ($model)")
+                                }
+                            }
                             if (body.readingCreated) {
                                 put("measurements_ready", ((current["measurements_ready"] as? Number)?.toInt() ?: 0) + 1)
                             }
@@ -504,6 +542,14 @@ private object AndroidBleManager {
                 updateLastError(it.message ?: "BLE frame upload failed.")
             }
         )
+    }
+
+    private suspend fun notifyMobileConnected() {
+        val token = SessionStore.token.value ?: return
+
+        runCatching {
+            ApiClient.apiService.notifyMobileBleConnected("Bearer $token")
+        }
     }
 
     private fun updateStreamingState(streaming: Boolean) {
@@ -539,6 +585,27 @@ class BleRepository(context: Context? = null) {
 
     fun fetchBleStatus(): RepositoryResult<BLEStatusResponse> {
         return RepositoryResult.Success(AndroidBleManager.currentStatus())
+    }
+
+    suspend fun fetchPredictionModelInfo(): RepositoryResult<PredictionModelInfoResponse> {
+        val token = SessionStore.token.value
+            ?: return RepositoryResult.Error("No active session token.")
+
+        return runCatching {
+            ApiClient.apiService.getPredictionModelInfo("Bearer $token")
+        }.fold(
+            onSuccess = { response ->
+                val body = response.body()
+                if (response.isSuccessful && body?.success == true) {
+                    RepositoryResult.Success(body)
+                } else {
+                    RepositoryResult.Error(body?.message ?: "Model info couldn't be loaded.")
+                }
+            },
+            onFailure = {
+                RepositoryResult.Error(it.message ?: "Model info couldn't be loaded.")
+            }
+        )
     }
 
     suspend fun scanBleDevices(context: Context): RepositoryResult<List<BleDevice>> {

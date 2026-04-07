@@ -65,7 +65,8 @@ def create_sensor_tables():
             spo2       SMALLINT,
             ptt        FLOAT,
             quality    SMALLINT,
-            category   VARCHAR(30)
+            category   VARCHAR(30),
+            model_name VARCHAR(50)
         );
         SELECT create_hypertable('bp_readings', 'time', if_not_exists => TRUE);
         CREATE INDEX IF NOT EXISTS idx_bp_user_time
@@ -77,6 +78,7 @@ def create_sensor_tables():
         conn.execute(text("ALTER TABLE ecg_data ALTER COLUMN user_id TYPE VARCHAR(255)"))
         conn.execute(text("ALTER TABLE bp_readings ALTER COLUMN user_id TYPE VARCHAR(255)"))
         conn.execute(text("ALTER TABLE bp_readings ADD COLUMN IF NOT EXISTS spo2 SMALLINT"))
+        conn.execute(text("ALTER TABLE bp_readings ADD COLUMN IF NOT EXISTS model_name VARCHAR(50)"))
         conn.commit()
     print("[DB] TimescaleDB sensor tables ready.")
 
@@ -152,6 +154,8 @@ def create_tables():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_language VARCHAR DEFAULT 'en'",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS push_notifications_enabled BOOLEAN DEFAULT TRUE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_reports_enabled BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS ble_calibration_started_at TIMESTAMP",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_ble_connected_at TIMESTAMP",
     ]
 
     try:

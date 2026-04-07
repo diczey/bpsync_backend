@@ -42,6 +42,8 @@ fun translateStatus(status: String, isTurkish: Boolean): String {
         "good" -> "İyi"
         "fair" -> "Orta"
         "optimal" -> "Optimal"
+        "calibrating" -> "Kalibrasyon"
+        "personalized tracking" -> "Kişiselleştirilmiş Takip"
         "critical" -> "Kritik"
         "low" -> "Düşük"
         "high" -> "Yüksek"
@@ -74,6 +76,16 @@ fun translateMessage(message: String, isTurkish: Boolean): String {
             "Henüz ölçüm yok. Ölçüme başlamak için BPSync bilekliğini bağla."
         message == "Failed to generate signal." -> "Sinyal oluşturulamadı."
         message == "Profile saved successfully!" -> "Profil başarıyla kaydedildi!"
+        message == "Connect your wristband to start the 3-day calibration countdown." ->
+            "3 günlük kalibrasyon geri sayımını başlatmak için bilekliğini bağla."
+        message == "3-day BLE calibration is in progress." ->
+            "3 günlük BLE kalibrasyonu devam ediyor."
+        message == "Calibration completed. Personalized daily labels are active until day 7." ->
+            "Kalibrasyon tamamlandı. 7. güne kadar kişiselleştirilmiş günlük etiketler aktif."
+        message == "7-day personalized health status is ready." ->
+            "7 günlük kişiselleştirilmiş sağlık durumu hazır."
+        message == "Not enough weekly readings to calculate health status." ->
+            "Sağlık durumunu hesaplamak için haftalık ölçüm verisi yeterli değil."
         message == "This device does not support Bluetooth LE." ->
             "Bu cihaz Bluetooth LE desteklemiyor."
         message == "Bluetooth is turned off. Turn it on and try again." ->
@@ -92,6 +104,10 @@ fun translateMessage(message: String, isTurkish: Boolean): String {
             "Cihaza bağlanılamadı. Yakında olduğundan ve başka bir yere bağlı olmadığından emin olun."
         message == "BPSync wrist service or characteristics were not found." ->
             "BPSync bileklik servisi veya özellikleri bulunamadı."
+        message.startsWith("Using XGBoost for live BLE:") ->
+            "CanlÄ± BLE akÄ±ÅŸÄ±nda XGBoost kullanÄ±lÄ±yor: mevcut veri akÄ±ÅŸÄ± ham ECG ve PPG pencere formatÄ±nÄ± saÄŸlamÄ±yor."
+        message.startsWith("CNN was requested, but live BLE fell back to XGBoost:") ->
+            "CNN istendi ancak canlÄ± BLE akÄ±ÅŸÄ± XGBoost'a geri dÃ¶ndÃ¼: mevcut veri akÄ±ÅŸÄ± ham ECG ve PPG pencere formatÄ±nÄ± saÄŸlamÄ±yor."
         else -> message
     }
 }

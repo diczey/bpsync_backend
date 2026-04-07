@@ -28,6 +28,8 @@ class User(Base):
     preferred_language = Column(String, nullable=False, default="en")
     push_notifications_enabled = Column(Boolean, nullable=False, default=True)
     weekly_reports_enabled = Column(Boolean, nullable=False, default=False)
+    ble_calibration_started_at = Column(DateTime, nullable=True)
+    last_ble_connected_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

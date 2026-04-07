@@ -166,6 +166,37 @@ fun BLEConnectionScreen(
                         modifier = Modifier.padding(top = 4.dp)
                     )
 
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.White.copy(alpha = 0.5f))
+                            .padding(14.dp)
+                    ) {
+                        Text(
+                            t("Prediction Backend", "Tahmin Motoru"),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "${t("Active model", "Aktif model")}: ${uiState.activeModelLabel}",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ForegroundBlack
+                        )
+                        uiState.modelMessage?.let { modelMessage ->
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = translateMessage(modelMessage, isTurkish),
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+
                     if (uiState.connected) {
                         Spacer(modifier = Modifier.height(16.dp))
                         Column(

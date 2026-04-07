@@ -28,6 +28,8 @@ data class BleUiState(
     val bufferFill: String = "0/100",
     val measurementsReady: Int = 0,
     val lastMeasurement: String? = null,
+    val activeModelLabel: String = "Checking...",
+    val modelMessage: String? = null,
     val errorMessage: String? = null
 )
 
@@ -47,6 +49,7 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<BleUiState> = _uiState.asStateFlow()
 
     init {
+        refreshModelInfo()
         observeStatus()
     }
 
@@ -188,7 +191,10 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             when (val result = bleRepository.connectToDevice(getApplication(), device)) {
-                is RepositoryResult.Success -> refreshStatus()
+                is RepositoryResult.Success -> {
+                    refreshStatus()
+                    refreshModelInfo()
+                }
 
                 is RepositoryResult.Error -> {
                     _uiState.update {
@@ -230,6 +236,30 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
     fun disconnect() {
         bleRepository.disconnect()
         refreshStatus()
+    }
+
+    private fun refreshModelInfo() {
+        viewModelScope.launch {
+            when (val result = bleRepository.fetchPredictionModelInfo()) {
+                is RepositoryResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            activeModelLabel = result.data.activeModelLabel,
+                            modelMessage = result.data.message
+                        )
+                    }
+                }
+
+                is RepositoryResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            activeModelLabel = t("Unavailable", "Kullanilamiyor"),
+                            modelMessage = result.message
+                        )
+                    }
+                }
+            }
+        }
     }
 
     private fun observeStatus() {

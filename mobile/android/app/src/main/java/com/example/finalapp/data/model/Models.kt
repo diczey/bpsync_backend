@@ -42,6 +42,26 @@ data class DashboardSummaryDto(
 
 data class DashboardResponse(val success: Boolean, val summary: DashboardSummaryDto?, val message: String?)
 
+data class HealthStatusResponseDto(
+    val success: Boolean,
+    @SerializedName("health_score") val healthScore: Int,
+    @SerializedName("overall_status") val overallStatus: String,
+    @SerializedName("blood_pressure_status") val bloodPressureStatus: String,
+    @SerializedName("heart_rate_status") val heartRateStatus: String,
+    @SerializedName("oxygen_status") val oxygenStatus: String,
+    @SerializedName("calibration_started_at") val calibrationStartedAt: Long? = null,
+    @SerializedName("calibration_ready_at") val calibrationReadyAt: Long? = null,
+    @SerializedName("weekly_status_ready_at") val weeklyStatusReadyAt: Long? = null,
+    @SerializedName("seconds_until_calibrated") val secondsUntilCalibrated: Int = 0,
+    @SerializedName("seconds_until_weekly_status") val secondsUntilWeeklyStatus: Int = 0,
+    @SerializedName("tracking_day") val trackingDay: Int = 0,
+    @SerializedName("is_calibrated") val isCalibrated: Boolean = false,
+    @SerializedName("is_week_ready") val isWeekReady: Boolean = false,
+    @SerializedName("countdown_phase") val countdownPhase: String = "awaiting_device",
+    @SerializedName("status_mode") val statusMode: String = "standard",
+    val message: String? = null
+)
+
 // ─── Readings ───
 data class HealthReadingDto(
     val id: String,
@@ -90,7 +110,9 @@ data class BleInferredReadingDto(
     @SerializedName("heart_rate") val heartRate: Int,
     val ptt: Float,
     val quality: Int,
-    val category: String
+    val category: String,
+    val model: String? = null,
+    val message: String? = null
 )
 
 data class BleFrameUploadResponse(
@@ -101,6 +123,17 @@ data class BleFrameUploadResponse(
     @SerializedName("buffer_fill") val bufferFill: String? = null,
     @SerializedName("reading_created") val readingCreated: Boolean = false,
     val reading: BleInferredReadingDto? = null,
+    val message: String? = null
+)
+
+data class PredictionModelInfoResponse(
+    val success: Boolean,
+    @SerializedName("requested_model") val requestedModel: String = "auto",
+    @SerializedName("active_model") val activeModel: String = "xgboost",
+    @SerializedName("active_model_label") val activeModelLabel: String = "XGBoost",
+    @SerializedName("cnn_model_ready") val cnnModelReady: Boolean = false,
+    @SerializedName("live_ble_supports_cnn") val liveBleSupportsCnn: Boolean = false,
+    @SerializedName("cnn_missing_requirements") val cnnMissingRequirements: List<String> = emptyList(),
     val message: String? = null
 )
 

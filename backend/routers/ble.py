@@ -7,6 +7,8 @@ and monitor the BLE connection to the wrist module.
 Prefix: /ble  (registered in backend/main.py)
 """
 
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional
 from pydantic import BaseModel
@@ -14,10 +16,11 @@ from pydantic import BaseModel
 from ble.manager import get_ble_manager, BLEManager, WRIST_DEVICE_NAME, SCAN_TIMEOUT_S
 from ble.data_manager import get_data_manager, init_data_manager, DataManager
 from ble.frame import FrameProcessResult
-from backend.database import SensorSessionLocal
+from backend.database import SensorSessionLocal, get_db
 from backend.utils.security import get_current_user
 from backend.models.user import User
 from backend.utils.sensor_identity import canonical_sensor_user_key
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -80,6 +83,27 @@ class MobileFrameUploadRequest(BaseModel):
     raw_frame: str
     source_device_name: Optional[str] = None
     source_device_address: Optional[str] = None
+
+
+def ensure_ble_calibration_started(
+    current_user: User,
+    db: Session,
+    *,
+    touch_last_connected: bool,
+) -> None:
+    now = datetime.utcnow()
+    changed = False
+    if current_user.ble_calibration_started_at is None:
+        current_user.ble_calibration_started_at = now
+        changed = True
+    if touch_last_connected:
+        current_user.last_ble_connected_at = now
+        changed = True
+    if not changed:
+        return
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -165,11 +189,27 @@ async def stop_streaming(
     return CommandResponse(success=False, message="Command could not be sent.")
 
 
+@router.post("/mobile-connected", response_model=CommandResponse, summary="Mark mobile BLE connection as active")
+async def mark_mobile_connected(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Mark the authenticated user's BLE calibration window as started.
+
+    The Android app calls this right after a successful GATT connection so the
+    3-day personalization countdown can start immediately.
+    """
+    ensure_ble_calibration_started(current_user, db, touch_last_connected=True)
+    return CommandResponse(success=True, message="BLE connection recorded.")
+
+
 @router.post("/mobile-frame", response_model=FrameProcessResult, summary="Upload a BLE frame from the mobile app")
 async def ingest_mobile_frame(
     request: MobileFrameUploadRequest,
     data_manager: DataManager = Depends(require_data_manager),
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Accept a raw JSON BLE frame uploaded by the Android app after it receives a
@@ -182,8 +222,10 @@ async def ingest_mobile_frame(
     if not raw_frame:
         raise HTTPException(status_code=400, detail="raw_frame is required.")
 
-    data_manager.set_user_context(current_user.id, current_user.age)
-    result = await data_manager.process_frame(raw_frame, user_id=current_user.id)
+    ensure_ble_calibration_started(current_user, db, touch_last_connected=False)
+    sensor_owner_key = canonical_sensor_user_key(current_user)
+    data_manager.set_user_context(sensor_owner_key, current_user.age)
+    result = await data_manager.process_frame(raw_frame, user_id=sensor_owner_key)
     if not result.success:
         raise HTTPException(status_code=400, detail=result.message or "BLE frame processing failed.")
     return result
