@@ -74,22 +74,10 @@ interface ApiService {
         @Query("month_offset") monthOffset: Int = 0
     ): Response<HealthReportResponse>
 
-    @GET("ble/status")
-    suspend fun getBleStatus(@Header("Authorization") token: String): Response<BLEStatusResponse>
-
     @GET("readings/model-info")
     suspend fun getPredictionModelInfo(
         @Header("Authorization") token: String
     ): Response<PredictionModelInfoResponse>
-
-    @POST("ble/scan")
-    suspend fun scanBle(@Header("Authorization") token: String): Response<ScanResult>
-
-    @POST("ble/start")
-    suspend fun startStreaming(@Header("Authorization") token: String): Response<CommandResponse>
-
-    @POST("ble/stop")
-    suspend fun stopStreaming(@Header("Authorization") token: String): Response<CommandResponse>
 
     @POST("ble/mobile-frame")
     suspend fun uploadBleFrame(

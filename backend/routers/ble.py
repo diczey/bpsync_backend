@@ -1,8 +1,11 @@
 """
-BLE Router — BLE Connection Control Endpoints
+BLE Router — Mobile-first BLE ingestion and optional server BLE debug endpoints
 
-Endpoints for the mobile app to scan, connect, start/stop streaming,
-and monitor the BLE connection to the wrist module.
+Production flow:
+  wrist module -> Android phone -> /ble/mobile-connected + /ble/mobile-frame
+
+Legacy server-side BLE endpoints remain available only for local hardware lab
+setups where the backend process can directly access a Bluetooth adapter.
 
 Prefix: /ble  (registered in backend/main.py)
 """
@@ -31,16 +34,17 @@ router = APIRouter()
 
 def require_ble() -> BLEManager:
     """
-    Returns the BLEManager singleton.
-    Raises 503 Service Unavailable if it has not been initialized yet.
+    Returns the optional server-side BLE manager used for local lab debugging.
+    Raises 503 when server BLE is disabled or not initialized.
     """
     mgr = get_ble_manager()
     if mgr is None:
         raise HTTPException(
             status_code=503,
             detail=(
-                "BLEManager is not initialized. "
-                "Add an init_ble_manager() call to the main.py lifespan function."
+                "Server-side BLE is unavailable. Production mobile BLE should connect "
+                "from Android and upload frames through /ble/mobile-frame. "
+                "Enable the optional backend BLE manager only for local hardware lab setups."
             )
         )
     return mgr
@@ -110,24 +114,23 @@ def ensure_ble_calibration_started(
 #  ENDPOINTS
 # ──────────────────────────────────────────────────────────────────────────────
 
-@router.get("/status", response_model=BLEStatusResponse, summary="BLE connection status")
+@router.get("/status", response_model=BLEStatusResponse, summary="Server BLE status (debug-only)")
 async def get_ble_status(
     ble: BLEManager = Depends(require_ble),
     current_user: User = Depends(get_current_user),
 ):
-    """Current BLE connection status. Used by mobile 'Find Sensor' screen."""
+    """Return backend-controlled BLE status for local lab debugging only."""
     return ble.get_status()
 
 
-@router.post("/scan", response_model=ScanResult, summary="Scan for wrist device")
+@router.post("/scan", response_model=ScanResult, summary="Server BLE scan (debug-only)")
 async def scan_for_device(
     ble: BLEManager = Depends(require_ble),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Triggers a BLE scan for the wrist module (BPSync-Wrist).
-    Called by the mobile 'Find Sensor' / 'Scan' button.
-    Scan duration: up to SCAN_TIMEOUT_S seconds.
+    Legacy backend-side BLE scan for local hardware lab setups.
+    The production Android app scans directly on-device instead of using this endpoint.
     """
     try:
         from bleak import BleakScanner
@@ -147,15 +150,14 @@ async def scan_for_device(
         raise HTTPException(status_code=500, detail=f"Scan error: {exc}")
 
 
-@router.post("/start", response_model=CommandResponse, summary="Start BLE streaming")
+@router.post("/start", response_model=CommandResponse, summary="Server BLE start (debug-only)")
 async def start_streaming(
     ble: BLEManager = Depends(require_ble),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Sends START command to the wrist module. Device begins 10 Hz JSON streaming.
-    Also wires the current user's ID and age into DataManager so readings are
-    correctly attributed in TimescaleDB.
+    Legacy backend-side START command for local hardware lab setups.
+    Production mobile BLE sends START directly from Android after GATT connection.
     """
     status = ble.get_status()
     if not status["connected"]:
@@ -173,12 +175,12 @@ async def start_streaming(
     return CommandResponse(success=False, message="Command could not be sent.")
 
 
-@router.post("/stop", response_model=CommandResponse, summary="Stop BLE streaming")
+@router.post("/stop", response_model=CommandResponse, summary="Server BLE stop (debug-only)")
 async def stop_streaming(
     ble: BLEManager = Depends(require_ble),
     current_user: User = Depends(get_current_user),
 ):
-    """Sends STOP command. Device stops streaming; BLE connection stays open."""
+    """Legacy backend-side STOP command for local hardware lab setups."""
     status = ble.get_status()
     if not status["connected"]:
         raise HTTPException(status_code=409, detail="Device is not connected.")
@@ -237,4 +239,4 @@ async def get_data_stats(
     current_user: User = Depends(get_current_user),
 ):
     """Frame processing stats: processed, failed, success_rate, bp_inferences, buffer_fill."""
-    return data_manager.get_stats(current_user.id)
+    return data_manager.get_stats(canonical_sensor_user_key(current_user))

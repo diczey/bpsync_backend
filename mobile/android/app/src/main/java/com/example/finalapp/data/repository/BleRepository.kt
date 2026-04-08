@@ -584,6 +584,7 @@ class BleRepository(context: Context? = null) {
     }
 
     fun fetchBleStatus(): RepositoryResult<BLEStatusResponse> {
+        // BLE connection truth lives on the Android device; no backend status call is needed.
         return RepositoryResult.Success(AndroidBleManager.currentStatus())
     }
 
