@@ -18,7 +18,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         SessionStore.initialize(applicationContext)
         SettingsStore.initialize(applicationContext)
-        BleRepository(applicationContext)
+        val bleRepository = BleRepository(applicationContext)
+        if (savedInstanceState == null) {
+            bleRepository.resetForColdStart()
+        }
         setContent {
             FinalAppTheme {
                 // A surface container using the 'background' color from the theme

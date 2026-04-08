@@ -583,6 +583,12 @@ class BleRepository(context: Context? = null) {
         context?.let(AndroidBleManager::initialize)
     }
 
+    fun resetForColdStart() {
+        // Drop any stale GATT/session state carried across process recreation so
+        // the user always starts from an explicit scan/connect action.
+        AndroidBleManager.disconnect()
+    }
+
     fun fetchBleStatus(): RepositoryResult<BLEStatusResponse> {
         // BLE connection truth lives on the Android device; no backend status call is needed.
         return RepositoryResult.Success(AndroidBleManager.currentStatus())
