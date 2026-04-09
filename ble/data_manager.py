@@ -7,7 +7,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 from sqlalchemy import text
@@ -65,6 +65,7 @@ class DataManager:
         self._user_states: Dict[str, UserStreamState] = {}
         self._user_locks: Dict[str, asyncio.Lock] = {}
         self._user_ages: Dict[str, float] = {}
+        self._sensor_table_columns: Dict[str, set[str]] = {}
         logger.info("DataManager initialized (default_user_id=%s)", default_user_id)
 
     async def process_frame(self, json_str, user_id=None):
@@ -79,7 +80,7 @@ class DataManager:
             )
 
         try:
-            frame = BLEFrame.parse_raw_json(json_str)
+            frame = BLEFrame.model_validate(self._normalize_frame_payload(json_str))
             frame.received_at_ms = int(time.time() * 1000)
         except Exception as exc:
             self._frames_failed += 1
@@ -222,25 +223,209 @@ class DataManager:
     def _min_quality_frames(total_frames: int) -> int:
         return max(1, math.ceil(total_frames * MIN_QUALITY_RATIO))
 
+    @staticmethod
+    def _coerce_flag(value: Any, default: int = 0) -> int:
+        try:
+            numeric = int(value)
+        except (TypeError, ValueError):
+            return default
+        return 1 if numeric else 0
+
+    def _normalize_frame_payload(self, raw_payload: str | dict[str, Any]) -> dict[str, Any]:
+        data = json.loads(raw_payload) if isinstance(raw_payload, str) else dict(raw_payload)
+        if not isinstance(data, dict):
+            raise ValueError("BLE frame payload must be a JSON object.")
+
+        normalized = dict(data)
+        normalized["ts"] = int(normalized.get("ts", normalized.get("timestamp", int(time.time() * 1000))) or 0)
+        normalized["sq"] = int(normalized.get("sq", normalized.get("seq", -1)) or -1)
+
+        if "pi" not in normalized and "ppg_ir" in normalized:
+            normalized["pi"] = normalized["ppg_ir"]
+        if "pr" not in normalized and "ppg_red" in normalized:
+            normalized["pr"] = normalized["ppg_red"]
+        if "ecg" not in normalized and "ecg_value" in normalized:
+            normalized["ecg"] = normalized["ecg_value"]
+
+        normalized["tp"] = float(normalized.get("tp", normalized.get("temperature", 0.0)) or 0.0)
+        normalized["ep"] = self._coerce_flag(normalized.get("ep", normalized.get("r_peak", 0)))
+        normalized["qi_w"] = self._coerce_flag(normalized.get("qi_w", normalized.get("qi", 0)))
+        normalized["qi_c"] = self._coerce_flag(normalized.get("qi_c", 0))
+        normalized["qi"] = self._coerce_flag(
+            normalized.get(
+                "qi",
+                normalized["qi_w"] if normalized["qi_c"] == 0 else (normalized["qi_w"] and normalized["qi_c"]),
+            )
+        )
+        normalized["bt"] = int(normalized.get("bt", normalized.get("battery", 100)) or 100)
+
+        for key in ("ax", "ay", "az", "gx", "gy", "gz", "cx", "cy", "cz"):
+            normalized[key] = int(normalized.get(key, 0) or 0)
+
+        return normalized
+
+    def _get_table_columns(self, db, table_name: str) -> set[str]:
+        cached = self._sensor_table_columns.get(table_name)
+        if cached is not None:
+            return cached
+
+        rows = db.execute(
+            text(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = :table_name
+                """
+            ),
+            {"table_name": table_name},
+        ).fetchall()
+        columns = {str(row[0]) for row in rows}
+        self._sensor_table_columns[table_name] = columns
+        return columns
+
+    def _dynamic_insert(self, db, table_name: str, payload: dict[str, Any], *, jsonb_columns: set[str] | None = None) -> None:
+        jsonb_columns = jsonb_columns or set()
+        available_columns = self._get_table_columns(db, table_name)
+        insertable = {key: value for key, value in payload.items() if key in available_columns}
+        if not insertable:
+            raise ValueError(f"No matching columns available for {table_name}.")
+
+        column_names = list(insertable.keys())
+        rendered_values = [
+            f"CAST(:{column} AS JSONB)" if column in jsonb_columns else f":{column}"
+            for column in column_names
+        ]
+        db.execute(
+            text(
+                f"""
+                INSERT INTO {table_name} ({", ".join(column_names)})
+                VALUES ({", ".join(rendered_values)})
+                """
+            ),
+            insertable,
+        )
+
+    @staticmethod
+    def _decode_numeric_series(value: Any) -> list[float]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                try:
+                    value = json.loads(stripped)
+                except json.JSONDecodeError:
+                    return []
+            else:
+                try:
+                    return [float(stripped)]
+                except ValueError:
+                    return []
+        if isinstance(value, (list, tuple)):
+            decoded: list[float] = []
+            for item in value:
+                try:
+                    decoded.append(float(item))
+                except (TypeError, ValueError):
+                    continue
+            return decoded
+        try:
+            return [float(value)]
+        except (TypeError, ValueError):
+            return []
+
+    def _build_waveform_window_from_timescale(self, db, user_id: str, frames) -> Optional["WaveformWindow"]:
+        if not frames:
+            return None
+
+        seq_start = min(frame.sq for frame in frames)
+        seq_end = max(frame.sq for frame in frames)
+
+        wrist_columns = self._get_table_columns(db, "wristband_data")
+        ecg_columns = self._get_table_columns(db, "ecg_data")
+        if "frame_seq" not in wrist_columns or "ecg_value" not in ecg_columns:
+            return None
+
+        wrist_select = ["frame_seq"]
+        if "ppg_ir_batch" in wrist_columns:
+            wrist_select.append("ppg_ir_batch")
+        elif "ppg_ir" in wrist_columns:
+            wrist_select.append("ppg_ir")
+        if "ppg_red_batch" in wrist_columns:
+            wrist_select.append("ppg_red_batch")
+        elif "ppg_red" in wrist_columns:
+            wrist_select.append("ppg_red")
+
+        wrist_rows = db.execute(
+            text(
+                f"""
+                SELECT {", ".join(wrist_select)}
+                FROM wristband_data
+                WHERE user_id = :user_id
+                  AND frame_seq BETWEEN :seq_start AND :seq_end
+                ORDER BY frame_seq ASC
+                """
+            ),
+            {
+                "user_id": user_id,
+                "seq_start": seq_start,
+                "seq_end": seq_end,
+            },
+        ).mappings().all()
+
+        ppg_ir: list[float] = []
+        ppg_red: list[float] = []
+        for row in wrist_rows:
+            ppg_ir.extend(
+                self._decode_numeric_series(
+                    row.get("ppg_ir_batch") if "ppg_ir_batch" in row else row.get("ppg_ir")
+                )
+            )
+            ppg_red.extend(
+                self._decode_numeric_series(
+                    row.get("ppg_red_batch") if "ppg_red_batch" in row else row.get("ppg_red")
+                )
+            )
+
+        ecg_order = "frame_seq ASC, sample_index ASC" if "sample_index" in ecg_columns else "time ASC"
+        ecg_rows = db.execute(
+            text(
+                f"""
+                SELECT ecg_value
+                FROM ecg_data
+                WHERE user_id = :user_id
+                  AND frame_seq BETWEEN :seq_start AND :seq_end
+                ORDER BY {ecg_order}
+                """
+            ),
+            {
+                "user_id": user_id,
+                "seq_start": seq_start,
+                "seq_end": seq_end,
+            },
+        ).fetchall()
+        ecg = [float(row[0]) for row in ecg_rows if row and row[0] is not None]
+
+        if len(ecg) < WAVEFORM_TARGET_SAMPLES or len(ppg_ir) < 2 or len(ppg_red) < 2:
+            return None
+
+        ecg = ecg[:WAVEFORM_TARGET_SAMPLES]
+        ppg_ir_resampled = self._resample_signal(ppg_ir, WAVEFORM_TARGET_SAMPLES)
+        ppg_red_resampled = self._resample_signal(ppg_red, WAVEFORM_TARGET_SAMPLES)
+        if len(ppg_ir_resampled) != WAVEFORM_TARGET_SAMPLES or len(ppg_red_resampled) != WAVEFORM_TARGET_SAMPLES:
+            return None
+
+        from backend.services.bp_model_service import WaveformWindow
+
+        return WaveformWindow(
+            ecg=ecg,
+            ppg_red=ppg_red_resampled,
+            ppg_ir=ppg_ir_resampled,
+        )
+
     def _insert_raw_frame(self, db, frame, user_id):
         received_at = datetime.fromtimestamp(frame.received_at_ms / 1000, tz=timezone.utc)
-        db.execute(text("""
-            INSERT INTO wristband_data
-                (
-                    time, user_id, device_timestamp_ms, received_at_ms, frame_seq,
-                    chest_seq, frame_mode, ppg_ir, ppg_red, ppg_ir_batch,
-                    ppg_red_batch, ax, ay, az, gx, gy, gz, temperature, ep,
-                    qi_w, qi_c, qi, battery
-                )
-            VALUES
-                (
-                    :time, :user_id, :device_timestamp_ms, :received_at_ms, :frame_seq,
-                    :chest_seq, :frame_mode, :ppg_ir, :ppg_red,
-                    CAST(:ppg_ir_batch AS JSONB), CAST(:ppg_red_batch AS JSONB),
-                    :ax, :ay, :az, :gx, :gy, :gz, :temperature, :ep,
-                    :qi_w, :qi_c, :qi, :battery
-                )
-        """), {
+        self._dynamic_insert(db, "wristband_data", {
             "time": received_at,
             "user_id": user_id,
             "device_timestamp_ms": frame.ts,
@@ -264,37 +449,38 @@ class DataManager:
             "qi_c": frame.qi_c,
             "qi": frame.qi,
             "battery": frame.bt,
-        })
+        }, jsonb_columns={"ppg_ir_batch", "ppg_red_batch"})
 
         ecg_batch = frame.ecg_batch
         if ecg_batch:
             start_at = received_at - timedelta(milliseconds=ECG_SAMPLE_INTERVAL_MS * (len(ecg_batch) - 1))
-            db.execute(
-                text("""
-                    INSERT INTO ecg_data (
-                        time, user_id, device_timestamp_ms, received_at_ms,
-                        frame_seq, sample_index, ecg_value, ep, qi_c
-                    )
-                    VALUES (
-                        :time, :user_id, :device_timestamp_ms, :received_at_ms,
-                        :frame_seq, :sample_index, :ecg_value, :ep, :qi_c
-                    )
-                """),
-                [
-                    {
-                        "time": start_at + timedelta(milliseconds=ECG_SAMPLE_INTERVAL_MS * index),
-                        "user_id": user_id,
-                        "device_timestamp_ms": frame.ts,
-                        "received_at_ms": frame.received_at_ms,
-                        "frame_seq": frame.sq,
-                        "sample_index": index,
-                        "ecg_value": float(value),
-                        "ep": frame.ep,
-                        "qi_c": frame.qi_c,
-                    }
-                    for index, value in enumerate(ecg_batch)
-                ],
-            )
+            available_columns = self._get_table_columns(db, "ecg_data")
+            rows = []
+            for index, value in enumerate(ecg_batch):
+                row = {
+                    "time": start_at + timedelta(milliseconds=ECG_SAMPLE_INTERVAL_MS * index),
+                    "user_id": user_id,
+                    "device_timestamp_ms": frame.ts,
+                    "received_at_ms": frame.received_at_ms,
+                    "frame_seq": frame.sq,
+                    "sample_index": index,
+                    "ecg_value": float(value),
+                    "ep": frame.ep,
+                    "qi_c": frame.qi_c,
+                }
+                rows.append({key: val for key, val in row.items() if key in available_columns})
+
+            if rows:
+                column_names = list(rows[0].keys())
+                db.execute(
+                    text(
+                        f"""
+                        INSERT INTO ecg_data ({", ".join(column_names)})
+                        VALUES ({", ".join(f":{column}" for column in column_names)})
+                        """
+                    ),
+                    rows,
+                )
 
     async def _run_ml_window(self, user_id: str, state: UserStreamState) -> Optional[InferredReading]:
         frames = list(state.window)
@@ -311,7 +497,19 @@ class DataManager:
             )
             return None
 
-        waveform_window = self._build_waveform_window(frames) if state.mode == "waveform" else None
+        waveform_window = None
+        if state.mode == "waveform":
+            raw_db = self._db_factory()
+            try:
+                waveform_window = self._build_waveform_window_from_timescale(raw_db, user_id, frames)
+            except Exception as exc:
+                logger.warning("Timescale waveform load failed for %s: %s", user_id, exc)
+            finally:
+                raw_db.close()
+
+            if waveform_window is None:
+                waveform_window = self._build_waveform_window(frames)
+
         heart_rate = self._calc_heart_rate(frames, waveform_window=waveform_window)
         ptt, ptt_std = self._calc_ptt(frames, waveform_window=waveform_window)
 
@@ -357,20 +555,7 @@ class DataManager:
 
         db = self._db_factory()
         try:
-            db.execute(text("""
-                INSERT INTO bp_readings
-                    (
-                        time, user_id, systolic, diastolic, heart_rate, spo2, ptt,
-                        quality, category, model_name, stream_mode, window_frames,
-                        source_seq_start, source_seq_end
-                    )
-                VALUES
-                    (
-                        :time, :user_id, :systolic, :diastolic, :heart_rate, :spo2, :ptt,
-                        :quality, :category, :model_name, :stream_mode, :window_frames,
-                        :source_seq_start, :source_seq_end
-                    )
-            """), {
+            self._dynamic_insert(db, "bp_readings", {
                 "time": reading_time,
                 "user_id": user_id,
                 "systolic": inferred.systolic,
