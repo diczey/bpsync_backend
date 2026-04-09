@@ -19,6 +19,7 @@ import android.os.SystemClock
 import com.example.finalapp.data.api.ApiClient
 import com.example.finalapp.data.model.BLEStatusResponse
 import com.example.finalapp.data.model.BleFrameUploadRequest
+import com.example.finalapp.data.model.BleSessionDeviceRequest
 import com.example.finalapp.data.model.PredictionModelInfoResponse
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -42,6 +43,12 @@ enum class BleDeviceRole {
     WRIST,
     CHEST,
     UNKNOWN
+}
+
+private enum class BleUploadTarget {
+    MERGED,
+    WRIST,
+    CHEST
 }
 
 data class BleDevice(
@@ -143,6 +150,7 @@ private object AndroidBleManager {
     private var lastMeasurement: String? = null
     private var lastSeq = 0
     private var lastError: String? = null
+    private var backendBufferFill = "0/$WINDOW_SIZE"
 
     fun initialize(context: Context) {
         appContext = context.applicationContext
@@ -300,7 +308,7 @@ private object AndroidBleManager {
                             session.mtu = 23
                             publishStatus()
                             scope.launch {
-                                notifyMobileConnected()
+                                notifyMobileConnected(device)
                             }
                             finish(RepositoryResult.Success("Connected to ${device.name}"))
 
@@ -328,6 +336,9 @@ private object AndroidBleManager {
                                 measurementStreaming = false
                             }
                             publishStatus()
+                            scope.launch {
+                                notifyMobileDisconnected(device)
+                            }
                             if (!completed) {
                                 val message = if (status == BluetoothGatt.GATT_SUCCESS) {
                                     "${roleLabel(device.role)} disconnected before measurement started."
@@ -490,6 +501,20 @@ private object AndroidBleManager {
             return RepositoryResult.Error("Couldn't send START to both BLE devices.")
         }
 
+        when (val backendSession = startBackendMeasurementSession()) {
+            is RepositoryResult.Success -> {
+                lastError = null
+            }
+
+            is RepositoryResult.Error -> {
+                writeCommand(wrist, "STOP")
+                writeCommand(chest, "STOP")
+                measurementStreaming = false
+                updateLastError(backendSession.message)
+                return RepositoryResult.Error(backendSession.message)
+            }
+        }
+
         measurementStreaming = true
         publishStatus()
         return RepositoryResult.Success("Measurement started on Wrist and Chest.")
@@ -505,6 +530,15 @@ private object AndroidBleManager {
         connectedSessions.forEach { writeCommand(it, "STOP") }
         measurementStreaming = false
         clearBuffers()
+        when (val backendResult = stopBackendMeasurementSession()) {
+            is RepositoryResult.Success -> {
+                lastError = null
+            }
+
+            is RepositoryResult.Error -> {
+                updateLastError(backendResult.message)
+            }
+        }
         publishStatus()
         return RepositoryResult.Success("Measurement stopped.")
     }
@@ -550,6 +584,7 @@ private object AndroidBleManager {
     private fun clearBuffers() {
         wristFrameBuffer.clear()
         chestFrameBuffer.clear()
+        backendBufferFill = "0/$WINDOW_SIZE"
     }
 
     private fun resetMeasurementCounters() {
@@ -561,6 +596,7 @@ private object AndroidBleManager {
         measurementsReady = 0
         lastMeasurement = null
         lastSeq = 0
+        backendBufferFill = "0/$WINDOW_SIZE"
     }
 
     private fun publishStatus() {
@@ -584,7 +620,6 @@ private object AndroidBleManager {
             else -> null
         }
 
-        val matchedCount = wristFrameBuffer.keys.count { chestFrameBuffer.containsKey(it) }.coerceAtMost(WINDOW_SIZE)
         val dataStats = linkedMapOf<String, Any>(
             "source" to SOURCE_TAG,
             "streaming" to measurementStreaming,
@@ -595,9 +630,9 @@ private object AndroidBleManager {
             "frames_uploaded" to framesUploaded,
             "upload_failures" to uploadFailures,
             "measurements_ready" to measurementsReady,
-            "buffer_fill" to "$matchedCount/$WINDOW_SIZE",
-            "wrist_buffered" to wristFrameBuffer.size,
-            "chest_buffered" to chestFrameBuffer.size,
+            "buffer_fill" to backendBufferFill,
+            "wrist_buffered" to 0,
+            "chest_buffered" to 0,
             "last_seq" to lastSeq,
             "wrist_mtu" to wrist.mtu,
             "chest_mtu" to chest.mtu
@@ -649,6 +684,14 @@ private object AndroidBleManager {
             BleDeviceRole.WRIST -> "Wrist"
             BleDeviceRole.CHEST -> "Chest"
             BleDeviceRole.UNKNOWN -> "Unknown"
+        }
+    }
+
+    private fun roleName(role: BleDeviceRole): String {
+        return when (role) {
+            BleDeviceRole.WRIST -> "wrist"
+            BleDeviceRole.CHEST -> "chest"
+            BleDeviceRole.UNKNOWN -> "unknown"
         }
     }
 
@@ -718,32 +761,38 @@ private object AndroidBleManager {
             normalized.optInt("ep", 0) == 1 ||
             normalized.has("cs")
 
-        if (!sessions.getValue(BleDeviceRole.CHEST).isConnected || hasEmbeddedChestData) {
-            if (measurementStreaming || hasEmbeddedChestData) {
-                val wristDevice = sessions.getValue(BleDeviceRole.WRIST).device
-                scope.launch {
-                    uploadFrame(normalized.toString(), wristDevice)
-                }
-            }
+        if (!measurementStreaming && !hasEmbeddedChestData) {
             publishStatus()
             return
         }
 
-        val seq = normalized.optInt("sq", -1)
-        if (seq < 0) {
-            updateLastError("Wrist frame is missing seq.")
-            return
+        val wristDevice = sessions.getValue(BleDeviceRole.WRIST).device
+        val uploadTarget = if (!sessions.getValue(BleDeviceRole.CHEST).isConnected || hasEmbeddedChestData) {
+            BleUploadTarget.MERGED
+        } else {
+            BleUploadTarget.WRIST
         }
 
-        wristFrameBuffer[seq] = normalized
-        trimBuffer(wristFrameBuffer)
+        scope.launch {
+            uploadFrame(
+                rawFrame = normalized.toString(),
+                device = wristDevice,
+                target = uploadTarget
+            )
+        }
         publishStatus()
-        processBufferedFrames()
     }
 
     private fun handleChestPayload(rawFrame: ByteArray) {
         val normalized = normalizeChestFrame(rawFrame) ?: run {
             updateLastError("Chest frame could not be parsed.")
+            return
+        }
+
+        lastSeq = normalized.optInt("sq", lastSeq)
+
+        if (!measurementStreaming) {
+            publishStatus()
             return
         }
 
@@ -753,50 +802,15 @@ private object AndroidBleManager {
             return
         }
 
-        chestFrameBuffer[seq] = normalized
-        trimBuffer(chestFrameBuffer)
-        publishStatus()
-        processBufferedFrames()
-    }
-
-    private fun trimBuffer(buffer: LinkedHashMap<Int, JSONObject>) {
-        while (buffer.size > MAX_BUFFERED_FRAMES) {
-            val oldestSeq = buffer.entries.firstOrNull()?.key ?: return
-            buffer.remove(oldestSeq)
-        }
-    }
-
-    private fun processBufferedFrames() {
-        if (!measurementStreaming) return
-
-        val commonSeqs = wristFrameBuffer.keys
-            .filter { chestFrameBuffer.containsKey(it) }
-            .sorted()
-            .take(WINDOW_SIZE)
-
-        if (commonSeqs.size < WINDOW_SIZE) {
-            publishStatus()
-            return
-        }
-
-        val mergedFrames = commonSeqs.mapNotNull { seq ->
-            val wrist = wristFrameBuffer[seq] ?: return@mapNotNull null
-            val chest = chestFrameBuffer[seq] ?: return@mapNotNull null
-            mergeFrames(wrist, chest)
-        }
-
-        commonSeqs.forEach { seq ->
-            wristFrameBuffer.remove(seq)
-            chestFrameBuffer.remove(seq)
-        }
-        publishStatus()
-
-        val wristDevice = sessions.getValue(BleDeviceRole.WRIST).device
+        val chestDevice = sessions.getValue(BleDeviceRole.CHEST).device
         scope.launch {
-            mergedFrames.forEach { merged ->
-                uploadFrame(merged, wristDevice)
-            }
+            uploadFrame(
+                rawFrame = normalized.toString(),
+                device = chestDevice,
+                target = BleUploadTarget.CHEST
+            )
         }
+        publishStatus()
     }
 
     private fun normalizeWristFrame(rawFrame: String): JSONObject? {
@@ -908,27 +922,11 @@ private object AndroidBleManager {
         }
     }
 
-    private fun mergeFrames(wrist: JSONObject, chest: JSONObject): String {
-        val merged = JSONObject(wrist.toString())
-        val chestSeq = chest.optInt("sq", wrist.optInt("sq", 0))
-        val wristQi = merged.optInt("qi_w", merged.optInt("qi", 0))
-        val chestQi = chest.optInt("qi_c", 0)
-
-        merged.put("cs", chestSeq)
-        merged.put("ep", chest.optInt("ep", 0))
-        merged.put("qi_c", chestQi)
-        merged.put("qi", if (wristQi == 1 && chestQi == 1) 1 else 0)
-        merged.put("cx", chest.optInt("cx", 0))
-        merged.put("cy", chest.optInt("cy", 0))
-        merged.put("cz", chest.optInt("cz", 0))
-        if (chest.has("ecg")) {
-            merged.put("ecg", chest.get("ecg"))
-        }
-        if (!merged.has("bt")) merged.put("bt", 100)
-        return merged.toString()
-    }
-
-    private suspend fun uploadFrame(rawFrame: String, device: BleDevice?) {
+    private suspend fun uploadFrame(
+        rawFrame: String,
+        device: BleDevice?,
+        target: BleUploadTarget
+    ) {
         val token = SessionStore.token.value
         if (token.isNullOrBlank()) {
             uploadFailures += 1
@@ -937,20 +935,34 @@ private object AndroidBleManager {
         }
 
         runCatching {
-            ApiClient.apiService.uploadBleFrame(
-                token = "Bearer $token",
-                request = BleFrameUploadRequest(
-                    rawFrame = rawFrame,
-                    sourceDeviceName = device?.name,
-                    sourceDeviceAddress = device?.address
-                )
+            val request = BleFrameUploadRequest(
+                rawFrame = rawFrame,
+                sourceDeviceName = device?.name,
+                sourceDeviceAddress = device?.address
             )
+            when (target) {
+                BleUploadTarget.MERGED -> ApiClient.apiService.uploadBleMergedFrame(
+                    token = "Bearer $token",
+                    request = request
+                )
+
+                BleUploadTarget.WRIST -> ApiClient.apiService.uploadWristBleFrame(
+                    token = "Bearer $token",
+                    request = request
+                )
+
+                BleUploadTarget.CHEST -> ApiClient.apiService.uploadChestBleFrame(
+                    token = "Bearer $token",
+                    request = request
+                )
+            }
         }.fold(
             onSuccess = { response ->
                 val body = response.body()
                 if (response.isSuccessful && body?.success == true) {
                     framesUploaded += 1
                     lastSeq = body.seqNum
+                    backendBufferFill = body.bufferFill ?: backendBufferFill
                     lastError = null
                     body.reading?.let { reading ->
                         lastMeasurement = "${reading.systolic}/${reading.diastolic} - ${reading.heartRate} bpm"
@@ -972,11 +984,76 @@ private object AndroidBleManager {
         )
     }
 
-    private suspend fun notifyMobileConnected() {
+    private suspend fun notifyMobileConnected(device: BleDevice) {
         val token = SessionStore.token.value ?: return
         runCatching {
-            ApiClient.apiService.notifyMobileBleConnected("Bearer $token")
+            ApiClient.apiService.notifyMobileDeviceConnected(
+                token = "Bearer $token",
+                request = BleSessionDeviceRequest(
+                    role = roleName(device.role),
+                    deviceName = device.name,
+                    deviceAddress = device.address
+                )
+            )
         }
+    }
+
+    private suspend fun notifyMobileDisconnected(device: BleDevice) {
+        val token = SessionStore.token.value ?: return
+        runCatching {
+            ApiClient.apiService.notifyMobileDeviceDisconnected(
+                token = "Bearer $token",
+                request = BleSessionDeviceRequest(
+                    role = roleName(device.role),
+                    deviceName = device.name,
+                    deviceAddress = device.address
+                )
+            )
+        }
+    }
+
+    private suspend fun startBackendMeasurementSession(): RepositoryResult<String> {
+        val token = SessionStore.token.value
+            ?: return RepositoryResult.Error("BLE measurement cannot start without an active session token.")
+
+        return runCatching {
+            ApiClient.apiService.startMobileMeasurementSession("Bearer $token")
+        }.fold(
+            onSuccess = { response ->
+                val body = response.body()
+                if (response.isSuccessful && body?.success == true) {
+                    backendBufferFill = "0/$WINDOW_SIZE"
+                    RepositoryResult.Success(body.message)
+                } else {
+                    RepositoryResult.Error(body?.message ?: "Backend BLE measurement session could not be reset.")
+                }
+            },
+            onFailure = {
+                RepositoryResult.Error(it.message ?: "Backend BLE measurement session could not be reset.")
+            }
+        )
+    }
+
+    private suspend fun stopBackendMeasurementSession(): RepositoryResult<String> {
+        val token = SessionStore.token.value
+            ?: return RepositoryResult.Error("BLE measurement stop could not be tracked without an active session token.")
+
+        return runCatching {
+            ApiClient.apiService.stopMobileMeasurementSession("Bearer $token")
+        }.fold(
+            onSuccess = { response ->
+                val body = response.body()
+                if (response.isSuccessful && body?.success == true) {
+                    backendBufferFill = "0/$WINDOW_SIZE"
+                    RepositoryResult.Success(body.message)
+                } else {
+                    RepositoryResult.Error(body?.message ?: "Backend BLE measurement stop could not be recorded.")
+                }
+            },
+            onFailure = {
+                RepositoryResult.Error(it.message ?: "Backend BLE measurement stop could not be recorded.")
+            }
+        )
     }
 
     private fun bothDevicesConnected(): Boolean {

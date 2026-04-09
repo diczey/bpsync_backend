@@ -79,11 +79,12 @@ async def get_dashboard_summary(
     Return the latest health reading for the logged-in user.
 
     Data sources (TimescaleDB):
-      - bp_readings    → systolic, diastolic, heart_rate
-      - wristband_data → temperature (most recent frame)
+      - bp_readings    -> systolic, diastolic, heart_rate, optional spo2
+      - wristband_data -> temperature (most recent frame)
 
-    SpO2 is not stored in bp_readings; it is provided as a constant 98
-    until the data pipeline includes a dedicated SpO2 inference step.
+    Live BLE CNN inference does not yet derive SpO2, so the value is often
+    NULL for streaming rows. When that happens we fall back to a safe 98
+    placeholder so the existing mobile UI keeps working.
 
     Falls back to mock data when no rows exist and USE_MOCK_DATA=true.
     """
@@ -91,7 +92,7 @@ async def get_dashboard_summary(
     # Accept both UUID (current format) and email (legacy format) as user_id
     bp_row = db.execute(
         text(f'''
-            SELECT time, systolic, diastolic, heart_rate
+            SELECT time, systolic, diastolic, heart_rate, spo2
             FROM bp_readings
             WHERE {sensor_user_clause()}
             ORDER BY time DESC
@@ -105,7 +106,8 @@ async def get_dashboard_summary(
 
 
     # Fetch the most-recent temperature from wristband raw frames.
-    # wristband_data is written at 10 Hz so this is nearly real-time.
+    # wristband_data is updated continuously from the synchronized mobile flow,
+    # so this remains the freshest temperature sample.
     temp_row = db.execute(
         text(f'''
             SELECT temperature
@@ -118,9 +120,9 @@ async def get_dashboard_summary(
         sensor_user_params(current_user),
     ).fetchone()
 
-    # SpO2: not yet derived from ppg_ir/ppg_red in the pipeline.
-    # Use 98 as a physiologically safe placeholder until inference is added.
-    spo2 = 98
+    # SpO2 is stored for manual/cuff readings. Live BLE waveform inference still
+    # leaves it NULL for now, so use 98 as a temporary placeholder in that case.
+    spo2 = int(bp_row.spo2) if getattr(bp_row, "spo2", None) is not None else 98
 
     temperature = float(temp_row.temperature) if temp_row else 36.6
 

@@ -38,8 +38,8 @@ class HealthReadingDto(BaseModel):
     heart_rate:   Optional[int]   = None
     systolic_bp:  Optional[int]   = None  # Renamed from 'systolic' to match Android
     diastolic_bp: Optional[int]   = None  # Renamed from 'diastolic' to match Android
-    spo2:         Optional[int]   = None  # Not in bp_readings; returned as None from DB
-    temperature:  Optional[float] = None  # Not in bp_readings; returned as None from DB
+    spo2:         Optional[int]   = None  # Present for manual/cuff rows; live BLE may leave it null
+    temperature:  Optional[float] = None  # Latest raw temperature lives in wristband_data
     ecg_data:     Optional[List[float]] = None  # Future: ECG waveform samples
     ppg_data:     Optional[List[float]] = None  # Future: PPG waveform samples
 
@@ -70,8 +70,8 @@ class HealthReadingCreate(BaseModel):
     heart_rate:  Optional[int]   = None
     systolic_bp: Optional[int]   = None
     diastolic_bp: Optional[int]  = None
-    spo2:        Optional[int]   = None      # Stored for context; not in bp_readings schema yet
-    temperature: Optional[float] = None      # Stored for context; not in bp_readings schema yet
+    spo2:        Optional[int]   = None      # Stored in bp_readings when supplied manually
+    temperature: Optional[float] = None      # Stored in wristband_data for context
     ecg_data:    Optional[List[float]] = None
     ppg_data:    Optional[List[float]] = None
 
@@ -110,9 +110,9 @@ def _row_to_dto(row) -> HealthReadingDto:
     """
     Convert a bp_readings DB row into a HealthReadingDto.
 
-    bp_readings does not store spo2 or temperature directly (those come from
-    wristband_data at a different write frequency), so they are returned as
-    None here. The mobile handles None gracefully by showing '--'.
+    bp_readings may store spo2 for manual readings, but the live BLE CNN path
+    currently leaves it null. Temperature still comes from wristband_data at a
+    different write frequency, so it is returned as None here.
     A surrogate 'id' is built from user_id + timestamp to give each row a
     unique stable key (bp_readings has no UUID primary key in TimescaleDB).
     """
@@ -125,7 +125,7 @@ def _row_to_dto(row) -> HealthReadingDto:
         systolic_bp=row.systolic,
         diastolic_bp=row.diastolic,
         spo2=getattr(row, 'spo2', None),
-        temperature=None,  # Not stored in bp_readings; future pipeline improvement
+        temperature=None,  # Temperature is stored in wristband_data, not bp_readings
     )
 
 
@@ -154,7 +154,7 @@ async def get_readings(
 
     Reads from the 'bp_readings' TimescaleDB hypertable which is populated
     by the BLE data pipeline (ble/data_manager.py) after each ML inference
-    window (~every 10 seconds at 10 Hz streaming).
+    window (waveform mode typically every 25 synchronized wrist/chest frames).
 
     Falls back to mock data when no rows exist and USE_MOCK_DATA=true.
     """
@@ -195,9 +195,8 @@ async def add_reading(
     The mobile sends a HealthReadingCreate object (timestamp, heart_rate,
     systolic_bp, diastolic_bp, spo2, temperature). We write systolic,
     diastolic, heart_rate and spo2 into bp_readings (the primary hypertable).
-    temperature is acknowledged but not written because bp_readings
-    has no dedicated column for it yet — this is flagged as a future DB
-    schema upgrade in backendGuide.md.
+    Temperature is additionally mirrored into wristband_data so dashboard and
+    raw-signal inspection stay consistent with the live BLE schema.
 
     The category string is derived from the systolic value using the same
     JNC-8 rules as the ML pipeline so dashboard summaries stay consistent.
@@ -232,6 +231,19 @@ async def add_reading(
             'cat':  category,
         },
     )
+    if request.temperature is not None:
+        db.execute(
+            text('''
+                INSERT INTO wristband_data (time, user_id, temperature, frame_mode)
+                VALUES (:time, :uid, :temperature, :frame_mode)
+            '''),
+            {
+                'time': reading_time,
+                'uid': canonical_sensor_user_key(current_user),
+                'temperature': request.temperature,
+                'frame_mode': 'manual',
+            },
+        )
     db.commit()
 
     # Return the saved reading in the same DTO format as GET /readings
@@ -280,6 +292,7 @@ async def seed_demo_readings(
     from backend.utils.mock_data import generate_health_readings
 
     generated = generate_health_readings(current_user.id, count=count)
+    sensor_user_id = canonical_sensor_user_key(current_user)
 
     for item in generated:
         reading_time = datetime.fromtimestamp(item["timestamp"] / 1000, tz=timezone.utc)
@@ -296,7 +309,7 @@ async def seed_demo_readings(
             '''),
             {
                 'time': reading_time,
-                'uid': current_user.id,
+                'uid': sensor_user_id,
                 'sys': systolic,
                 'dia': diastolic,
                 'hr': heart_rate,
@@ -307,13 +320,14 @@ async def seed_demo_readings(
 
         db.execute(
             text('''
-                INSERT INTO wristband_data (time, user_id, temperature)
-                VALUES (:time, :uid, :temperature)
+                INSERT INTO wristband_data (time, user_id, temperature, frame_mode)
+                VALUES (:time, :uid, :temperature, :frame_mode)
             '''),
             {
                 'time': reading_time,
-                'uid': current_user.id,
+                'uid': sensor_user_id,
                 'temperature': temperature,
+                'frame_mode': 'demo',
             },
         )
 

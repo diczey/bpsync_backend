@@ -110,6 +110,12 @@ data class BleFrameUploadRequest(
     @SerializedName("source_device_address") val sourceDeviceAddress: String? = null
 )
 
+data class BleSessionDeviceRequest(
+    val role: String,
+    @SerializedName("device_name") val deviceName: String? = null,
+    @SerializedName("device_address") val deviceAddress: String? = null
+)
+
 data class BleInferredReadingDto(
     val timestamp: Long,
     val systolic: Int,
@@ -130,6 +136,22 @@ data class BleFrameUploadResponse(
     @SerializedName("buffer_fill") val bufferFill: String? = null,
     @SerializedName("reading_created") val readingCreated: Boolean = false,
     val reading: BleInferredReadingDto? = null,
+    val message: String? = null
+)
+
+data class BleMobileSessionStatusResponse(
+    val success: Boolean,
+    @SerializedName("wrist_connected") val wristConnected: Boolean = false,
+    @SerializedName("chest_connected") val chestConnected: Boolean = false,
+    @SerializedName("wrist_device_name") val wristDeviceName: String? = null,
+    @SerializedName("wrist_device_address") val wristDeviceAddress: String? = null,
+    @SerializedName("chest_device_name") val chestDeviceName: String? = null,
+    @SerializedName("chest_device_address") val chestDeviceAddress: String? = null,
+    val streaming: Boolean = false,
+    @SerializedName("last_event_at") val lastEventAt: Long? = null,
+    @SerializedName("measurement_started_at") val measurementStartedAt: Long? = null,
+    @SerializedName("measurement_stopped_at") val measurementStoppedAt: Long? = null,
+    @SerializedName("data_stats") val dataStats: Map<String, Any> = emptyMap(),
     val message: String? = null
 )
 

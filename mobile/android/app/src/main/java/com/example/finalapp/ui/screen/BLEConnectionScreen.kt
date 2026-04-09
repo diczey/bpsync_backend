@@ -203,6 +203,20 @@ fun BLEConnectionScreen(
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(12.dp))
+                    DebugStatsCard(
+                        isTurkish = isTurkish,
+                        bufferFill = uiState.bufferFill,
+                        framesUploaded = uiState.framesUploaded,
+                        uploadFailures = uiState.uploadFailures,
+                        framesReceived = uiState.framesReceived,
+                        wristFramesReceived = uiState.wristFramesReceived,
+                        chestFramesReceived = uiState.chestFramesReceived,
+                        measurementsReady = uiState.measurementsReady,
+                        lastSeq = uiState.lastSeq,
+                        lastError = uiState.lastBleError
+                    )
+
                     uiState.errorMessage?.let { error ->
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(text = translateMessage(error, isTurkish), color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
@@ -253,19 +267,34 @@ fun BLEConnectionScreen(
                     Text(
                         if (uiState.readyToStart && !uiState.streaming) {
                             t(
-                                "Both devices are ready. Measurement is starting automatically.",
-                                "Iki cihaz hazir. Olcum otomatik olarak baslatiliyor."
+                                "Both devices are ready. Press start measurement to begin.",
+                                "Iki cihaz hazir. Olcume baslamak icin baslat tusuna bas."
                             )
                         } else {
                             t(
-                                "Connect Wrist and Chest separately. Measurement starts automatically when both are connected.",
-                                "Wrist ve Chest'i ayri ayri bagla. Ikisi de baglaninca olcum otomatik baslar."
+                                "Connect Wrist and Chest separately. Start becomes active when both are connected.",
+                                "Wrist ve Chest'i ayri ayri bagla. Ikisi de baglaninca baslat aktif olur."
                             )
                         },
                         fontSize = 12.sp,
                         color = TextSecondary,
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    if (uiState.readyToStart && !uiState.streaming) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Button(
+                            onClick = viewModel::startMeasurement,
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                        ) {
+                            Text(
+                                t("Start Measurement", "Olcume Basla"),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
 
                     if (uiState.streaming) {
                         Spacer(modifier = Modifier.height(10.dp))
@@ -321,6 +350,76 @@ private fun DeviceStatusCard(
             Text(it.address, fontSize = 11.sp, color = TextMuted)
         }
     }
+}
+
+@Composable
+private fun DebugStatsCard(
+    isTurkish: Boolean,
+    bufferFill: String,
+    framesUploaded: Int,
+    uploadFailures: Int,
+    framesReceived: Int,
+    wristFramesReceived: Int,
+    chestFramesReceived: Int,
+    measurementsReady: Int,
+    lastSeq: Int,
+    lastError: String?
+) {
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = 0.5f))
+            .padding(14.dp)
+    ) {
+        Text(
+            text = t("BLE Debug", "BLE Debug"),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextSecondary
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+        DebugStatRow(t("Buffer fill", "Buffer dolulugu"), bufferFill)
+        DebugStatRow(t("Frames uploaded", "Gonderilen frame"), framesUploaded.toString())
+        DebugStatRow(t("Upload failures", "Upload hatasi"), uploadFailures.toString())
+        DebugStatRow(t("Total frames", "Toplam frame"), framesReceived.toString())
+        DebugStatRow(t("Wrist frames", "Wrist frame"), wristFramesReceived.toString())
+        DebugStatRow(t("Chest frames", "Chest frame"), chestFramesReceived.toString())
+        DebugStatRow(t("Ready readings", "Hazir olcum"), measurementsReady.toString())
+        DebugStatRow(t("Last seq", "Son seq"), lastSeq.toString())
+
+        if (!lastError.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = t("Last error", "Son hata"),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = ErrorRed
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = translateMessage(lastError, isTurkish),
+                fontSize = 12.sp,
+                color = ErrorRed
+            )
+        }
+    }
+}
+
+@Composable
+private fun DebugStatRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, fontSize = 12.sp, color = TextSecondary)
+        Text(text = value, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+    }
+    Spacer(modifier = Modifier.height(4.dp))
 }
 
 @Composable

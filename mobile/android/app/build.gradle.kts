@@ -28,7 +28,7 @@ android {
             val debugApiBaseUrl = providers.gradleProperty("DEBUG_API_BASE_URL")
                 .orElse("http://10.0.2.2:8000/")
             val phoneDebugApiBaseUrl = providers.gradleProperty("PHONE_DEBUG_API_BASE_URL")
-                .orElse("http://192.168.1.100:8000/")
+                .orElse(releaseApiBaseUrl)
             buildConfigField("String", "API_BASE_URL", "\"${debugApiBaseUrl.get()}\"")
             buildConfigField("String", "PHONE_DEBUG_API_BASE_URL", "\"${phoneDebugApiBaseUrl.get()}\"")
         }

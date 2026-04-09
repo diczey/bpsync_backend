@@ -79,16 +79,55 @@ interface ApiService {
         @Header("Authorization") token: String
     ): Response<PredictionModelInfoResponse>
 
-    @POST("ble/mobile-frame")
-    suspend fun uploadBleFrame(
+    @POST("ble/mobile/frames/merged")
+    suspend fun uploadBleMergedFrame(
         @Header("Authorization") token: String,
         @Body request: BleFrameUploadRequest
     ): Response<BleFrameUploadResponse>
 
-    @POST("ble/mobile-connected")
+    @POST("ble/mobile/frames/wrist")
+    suspend fun uploadWristBleFrame(
+        @Header("Authorization") token: String,
+        @Body request: BleFrameUploadRequest
+    ): Response<BleFrameUploadResponse>
+
+    @POST("ble/mobile/frames/chest")
+    suspend fun uploadChestBleFrame(
+        @Header("Authorization") token: String,
+        @Body request: BleFrameUploadRequest
+    ): Response<BleFrameUploadResponse>
+
+    @POST("ble/mobile/session/connected")
     suspend fun notifyMobileBleConnected(
         @Header("Authorization") token: String
     ): Response<CommandResponse>
+
+    @POST("ble/mobile/session/connected")
+    suspend fun notifyMobileDeviceConnected(
+        @Header("Authorization") token: String,
+        @Body request: BleSessionDeviceRequest
+    ): Response<CommandResponse>
+
+    @POST("ble/mobile/session/disconnected")
+    suspend fun notifyMobileDeviceDisconnected(
+        @Header("Authorization") token: String,
+        @Body request: BleSessionDeviceRequest
+    ): Response<CommandResponse>
+
+    @POST("ble/mobile/session/start")
+    suspend fun startMobileMeasurementSession(
+        @Header("Authorization") token: String
+    ): Response<CommandResponse>
+
+    @POST("ble/mobile/session/stop")
+    suspend fun stopMobileMeasurementSession(
+        @Header("Authorization") token: String
+    ): Response<CommandResponse>
+
+    @GET("ble/mobile/session/status")
+    suspend fun getMobileBleSessionStatus(
+        @Header("Authorization") token: String
+    ): Response<BleMobileSessionStatusResponse>
 
     @GET("trends")
     suspend fun getTrends(

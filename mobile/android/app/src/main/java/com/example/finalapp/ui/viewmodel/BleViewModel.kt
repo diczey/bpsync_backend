@@ -30,12 +30,20 @@ data class BleUiState(
     val statusSubtitle: String = "",
     val activeModelLabel: String = "Checking...",
     val modelMessage: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val framesReceived: Int = 0,
+    val wristFramesReceived: Int = 0,
+    val chestFramesReceived: Int = 0,
+    val framesUploaded: Int = 0,
+    val uploadFailures: Int = 0,
+    val measurementsReady: Int = 0,
+    val bufferFill: String = "0/25",
+    val lastSeq: Int = 0,
+    val lastBleError: String? = null
 )
 
 class BleViewModel(application: Application) : AndroidViewModel(application) {
     private val bleRepository = BleRepository(application)
-    private var autoStartIssued = false
 
     private fun t(english: String, turkish: String): String {
         return if (isTurkishSelected()) turkish else english
@@ -58,8 +66,10 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
         when (val result = bleRepository.fetchBleStatus()) {
             is RepositoryResult.Success -> {
                 val status = result.data
+                val dataStats = status.dataStats
                 val readyToStart = status.wristConnected && status.chestConnected
-                val streaming = status.streaming || ((status.dataStats["streaming"] as? Boolean) ?: false)
+                val streaming = status.streaming || dataStats.booleanValue("streaming")
+                val lastBleError = dataStats.stringValueOrNull("last_error")
 
                 _uiState.update {
                     it.copy(
@@ -93,8 +103,8 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                                 "Wrist ve Chest birlikte veri gonderiyor"
                             )
                             readyToStart -> t(
-                                "Measurement will start automatically",
-                                "Olcum otomatik olarak baslayacak"
+                                "Both devices are ready. Press start to begin measurement",
+                                "Iki cihaz hazir. Olcume baslamak icin baslat tusuna bas"
                             )
                             status.wristConnected || status.chestConnected -> t(
                                 "One device is ready, now connect the other one",
@@ -105,16 +115,17 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                                 "Asagidaki Wrist ve Chest tuslarini kullan"
                             )
                         },
-                        errorMessage = status.dataStats["last_error"]?.toString()
+                        errorMessage = lastBleError,
+                        framesReceived = dataStats.intValue("frames_received"),
+                        wristFramesReceived = dataStats.intValue("wrist_frames_received"),
+                        chestFramesReceived = dataStats.intValue("chest_frames_received"),
+                        framesUploaded = dataStats.intValue("frames_uploaded"),
+                        uploadFailures = dataStats.intValue("upload_failures"),
+                        measurementsReady = dataStats.intValue("measurements_ready"),
+                        bufferFill = dataStats.stringValue("buffer_fill", "0/25"),
+                        lastSeq = dataStats.intValue("last_seq"),
+                        lastBleError = lastBleError
                     )
-                }
-
-                when {
-                    !readyToStart -> autoStartIssued = false
-                    readyToStart && !streaming && !autoStartIssued -> {
-                        autoStartIssued = true
-                        startMeasurementInternal()
-                    }
                 }
             }
 
@@ -192,6 +203,10 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun startMeasurement() {
+        startMeasurementInternal()
+    }
+
     fun onPermissionsDenied() {
         _uiState.update {
             it.copy(
@@ -211,7 +226,6 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun disconnect() {
-        autoStartIssued = false
         bleRepository.disconnect()
         refreshStatus()
     }
@@ -361,4 +375,29 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+}
+
+private fun Map<String, Any>.booleanValue(key: String): Boolean {
+    return when (val value = this[key]) {
+        is Boolean -> value
+        is Number -> value.toInt() != 0
+        is String -> value.equals("true", ignoreCase = true)
+        else -> false
+    }
+}
+
+private fun Map<String, Any>.intValue(key: String): Int {
+    return when (val value = this[key]) {
+        is Number -> value.toInt()
+        is String -> value.toIntOrNull() ?: 0
+        else -> 0
+    }
+}
+
+private fun Map<String, Any>.stringValue(key: String, fallback: String): String {
+    return stringValueOrNull(key) ?: fallback
+}
+
+private fun Map<String, Any>.stringValueOrNull(key: String): String? {
+    return this[key]?.toString()?.takeIf { it.isNotBlank() }
 }

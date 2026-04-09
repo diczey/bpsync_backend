@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import math
 import statistics
@@ -143,6 +144,18 @@ class DataManager:
             self._user_ages[self._default_user_id] = age
         self._user_age = age
 
+    def reset_user_stream(self, user_id: str) -> None:
+        if not user_id:
+            return
+
+        state = self._user_states.get(user_id)
+        if state is None:
+            return
+
+        state.window = deque(maxlen=self._window_target_for_mode("legacy"))
+        state.mode = "legacy"
+        logger.info("DataManager stream reset for %s", user_id)
+
     def get_stats(self, user_id: Optional[str] = None):
         if user_id:
             state = self._user_states.get(user_id)
@@ -213,16 +226,32 @@ class DataManager:
         received_at = datetime.fromtimestamp(frame.received_at_ms / 1000, tz=timezone.utc)
         db.execute(text("""
             INSERT INTO wristband_data
-                (time, user_id, ppg_ir, ppg_red, ax, ay, az, gx, gy, gz,
-                 temperature, ep, qi_w, qi_c, qi, battery)
+                (
+                    time, user_id, device_timestamp_ms, received_at_ms, frame_seq,
+                    chest_seq, frame_mode, ppg_ir, ppg_red, ppg_ir_batch,
+                    ppg_red_batch, ax, ay, az, gx, gy, gz, temperature, ep,
+                    qi_w, qi_c, qi, battery
+                )
             VALUES
-                (:time, :user_id, :ppg_ir, :ppg_red, :ax, :ay, :az,
-                 :gx, :gy, :gz, :temperature, :ep, :qi_w, :qi_c, :qi, :battery)
+                (
+                    :time, :user_id, :device_timestamp_ms, :received_at_ms, :frame_seq,
+                    :chest_seq, :frame_mode, :ppg_ir, :ppg_red,
+                    CAST(:ppg_ir_batch AS JSONB), CAST(:ppg_red_batch AS JSONB),
+                    :ax, :ay, :az, :gx, :gy, :gz, :temperature, :ep,
+                    :qi_w, :qi_c, :qi, :battery
+                )
         """), {
             "time": received_at,
             "user_id": user_id,
+            "device_timestamp_ms": frame.ts,
+            "received_at_ms": frame.received_at_ms,
+            "frame_seq": frame.sq,
+            "chest_seq": frame.cs,
+            "frame_mode": frame.frame_mode,
             "ppg_ir": frame.ppg_ir_latest,
             "ppg_red": frame.ppg_red_latest,
+            "ppg_ir_batch": json.dumps(frame.ppg_ir_batch),
+            "ppg_red_batch": json.dumps(frame.ppg_red_batch),
             "ax": frame.ax,
             "ay": frame.ay,
             "az": frame.az,
@@ -242,14 +271,26 @@ class DataManager:
             start_at = received_at - timedelta(milliseconds=ECG_SAMPLE_INTERVAL_MS * (len(ecg_batch) - 1))
             db.execute(
                 text("""
-                    INSERT INTO ecg_data (time, user_id, ecg_value)
-                    VALUES (:time, :user_id, :ecg_value)
+                    INSERT INTO ecg_data (
+                        time, user_id, device_timestamp_ms, received_at_ms,
+                        frame_seq, sample_index, ecg_value, ep, qi_c
+                    )
+                    VALUES (
+                        :time, :user_id, :device_timestamp_ms, :received_at_ms,
+                        :frame_seq, :sample_index, :ecg_value, :ep, :qi_c
+                    )
                 """),
                 [
                     {
                         "time": start_at + timedelta(milliseconds=ECG_SAMPLE_INTERVAL_MS * index),
                         "user_id": user_id,
+                        "device_timestamp_ms": frame.ts,
+                        "received_at_ms": frame.received_at_ms,
+                        "frame_seq": frame.sq,
+                        "sample_index": index,
                         "ecg_value": float(value),
+                        "ep": frame.ep,
+                        "qi_c": frame.qi_c,
                     }
                     for index, value in enumerate(ecg_batch)
                 ],
@@ -318,19 +359,32 @@ class DataManager:
         try:
             db.execute(text("""
                 INSERT INTO bp_readings
-                    (time, user_id, systolic, diastolic, heart_rate, ptt, quality, category, model_name)
+                    (
+                        time, user_id, systolic, diastolic, heart_rate, spo2, ptt,
+                        quality, category, model_name, stream_mode, window_frames,
+                        source_seq_start, source_seq_end
+                    )
                 VALUES
-                    (:time, :user_id, :systolic, :diastolic, :heart_rate, :ptt, :quality, :category, :model_name)
+                    (
+                        :time, :user_id, :systolic, :diastolic, :heart_rate, :spo2, :ptt,
+                        :quality, :category, :model_name, :stream_mode, :window_frames,
+                        :source_seq_start, :source_seq_end
+                    )
             """), {
                 "time": reading_time,
                 "user_id": user_id,
                 "systolic": inferred.systolic,
                 "diastolic": inferred.diastolic,
                 "heart_rate": inferred.heart_rate,
+                "spo2": None,
                 "ptt": inferred.ptt,
                 "quality": inferred.quality,
                 "category": inferred.category,
                 "model_name": inferred.model,
+                "stream_mode": state.mode,
+                "window_frames": len(frames),
+                "source_seq_start": frames[0].sq if frames else None,
+                "source_seq_end": frames[-1].sq if frames else None,
             })
             db.commit()
             state.bp_inferences += 1

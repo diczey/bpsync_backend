@@ -1,8 +1,9 @@
 """
-BLE Router — Mobile-first BLE ingestion and optional server BLE debug endpoints
+BLE Router - Mobile-first BLE ingestion and optional server BLE debug endpoints.
 
 Production flow:
-  wrist module -> Android phone -> /ble/mobile-connected + /ble/mobile-frame
+  wrist/chest modules -> Android phone ->
+  /ble/mobile/session/* + /ble/mobile/frames/*
 
 Legacy server-side BLE endpoints remain available only for local hardware lab
 setups where the backend process can directly access a Bluetooth adapter.
@@ -10,27 +11,33 @@ setups where the backend process can directly access a Bluetooth adapter.
 Prefix: /ble  (registered in backend/main.py)
 """
 
+import asyncio
+import json
+from dataclasses import dataclass, field
 from datetime import datetime
-
-from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional
-from pydantic import BaseModel
 
-from ble.manager import get_ble_manager, BLEManager, WRIST_DEVICE_NAME, SCAN_TIMEOUT_S
-from ble.data_manager import get_data_manager, init_data_manager, DataManager
-from ble.frame import FrameProcessResult
-from backend.database import SensorSessionLocal, get_db
-from backend.utils.security import get_current_user
-from backend.models.user import User
-from backend.utils.sensor_identity import canonical_sensor_user_key
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+from backend.database import SensorSessionLocal, get_db
+from backend.models.user import User
+from backend.utils.security import get_current_user
+from backend.utils.sensor_identity import canonical_sensor_user_key
+from ble.data_manager import (
+    DataManager,
+    WAVEFORM_WINDOW_FRAMES,
+    get_data_manager,
+    init_data_manager,
+)
+from ble.frame import FrameProcessResult
+from ble.manager import BLEManager, SCAN_TIMEOUT_S, WRIST_DEVICE_NAME, get_ble_manager
 
 router = APIRouter()
 
+PARTIAL_FRAME_BUFFER_LIMIT = 80
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  HELPER — Dependency Injection
-# ──────────────────────────────────────────────────────────────────────────────
 
 def require_ble() -> BLEManager:
     """
@@ -43,9 +50,9 @@ def require_ble() -> BLEManager:
             status_code=503,
             detail=(
                 "Server-side BLE is unavailable. Production mobile BLE should connect "
-                "from Android and upload frames through /ble/mobile-frame. "
+                "from Android and upload frames through /ble/mobile/frames/*. "
                 "Enable the optional backend BLE manager only for local hardware lab setups."
-            )
+            ),
         )
     return mgr
 
@@ -57,10 +64,6 @@ def require_data_manager() -> DataManager:
         mgr = init_data_manager(db_factory=SensorSessionLocal)
     return mgr
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  REQUEST / RESPONSE MODELS
-# ──────────────────────────────────────────────────────────────────────────────
 
 class CommandResponse(BaseModel):
     success: bool
@@ -89,6 +92,354 @@ class MobileFrameUploadRequest(BaseModel):
     source_device_address: Optional[str] = None
 
 
+class MobileDeviceEventRequest(BaseModel):
+    role: str = "unknown"
+    device_name: Optional[str] = None
+    device_address: Optional[str] = None
+
+
+class MobileSessionStatusResponse(BaseModel):
+    success: bool
+    wrist_connected: bool = False
+    chest_connected: bool = False
+    wrist_device_name: Optional[str] = None
+    wrist_device_address: Optional[str] = None
+    chest_device_name: Optional[str] = None
+    chest_device_address: Optional[str] = None
+    streaming: bool = False
+    last_event_at: Optional[int] = None
+    measurement_started_at: Optional[int] = None
+    measurement_stopped_at: Optional[int] = None
+    data_stats: dict = {}
+    message: Optional[str] = None
+
+
+@dataclass
+class MobileFrameSyncState:
+    wrist_frames: dict[int, dict] = field(default_factory=dict)
+    chest_frames: dict[int, dict] = field(default_factory=dict)
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+
+class MobileFrameSynchronizer:
+    def __init__(self) -> None:
+        self._states: dict[str, MobileFrameSyncState] = {}
+
+    def reset_user(self, user_id: str) -> None:
+        if not user_id:
+            return
+        self._states[user_id] = MobileFrameSyncState()
+
+    async def ingest_partial_frame(
+        self,
+        *,
+        role: str,
+        raw_frame: str,
+        user_id: str,
+        data_manager: DataManager,
+    ) -> FrameProcessResult:
+        try:
+            frame_data = json.loads(raw_frame)
+        except json.JSONDecodeError as exc:
+            return FrameProcessResult(
+                success=False,
+                seq_num=0,
+                quality=0.0,
+                message=f"Invalid JSON frame: {exc}",
+            )
+
+        if not isinstance(frame_data, dict):
+            return FrameProcessResult(
+                success=False,
+                seq_num=0,
+                quality=0.0,
+                message="BLE frame payload must be a JSON object.",
+            )
+
+        seq_num = self._extract_seq(frame_data)
+        if seq_num < 0:
+            return FrameProcessResult(
+                success=False,
+                seq_num=0,
+                quality=self._extract_quality(frame_data, role),
+                message="BLE frame is missing a valid seq/sq field.",
+            )
+
+        state = self._state_for_user(user_id)
+        merged_frame: Optional[dict] = None
+        buffer_fill = f"0/{WAVEFORM_WINDOW_FRAMES}"
+
+        async with state.lock:
+            target_buffer = state.wrist_frames if role == "wrist" else state.chest_frames
+            other_buffer = state.chest_frames if role == "wrist" else state.wrist_frames
+
+            target_buffer[seq_num] = dict(frame_data)
+            self._trim_buffer(target_buffer)
+
+            matched_peer = other_buffer.get(seq_num)
+            matched_count = min(
+                sum(1 for seq in state.wrist_frames if seq in state.chest_frames),
+                WAVEFORM_WINDOW_FRAMES,
+            )
+            buffer_fill = f"{matched_count}/{WAVEFORM_WINDOW_FRAMES}"
+
+            if matched_peer is not None:
+                wrist_frame = frame_data if role == "wrist" else matched_peer
+                chest_frame = frame_data if role == "chest" else matched_peer
+                target_buffer.pop(seq_num, None)
+                other_buffer.pop(seq_num, None)
+                merged_frame = self._merge_frames(wrist_frame=wrist_frame, chest_frame=chest_frame)
+
+        if merged_frame is None:
+            return FrameProcessResult(
+                success=True,
+                seq_num=seq_num,
+                quality=self._extract_quality(frame_data, role),
+                buffer_fill=buffer_fill,
+                reading_created=False,
+                message=f"{role.title()} frame buffered, waiting for matching seq.",
+            )
+
+        result = await data_manager.process_frame(json.dumps(merged_frame), user_id=user_id)
+        if result.success and not result.message:
+            result.message = f"Matched wrist/chest seq {seq_num} and forwarded for processing."
+        return result
+
+    def _state_for_user(self, user_id: str) -> MobileFrameSyncState:
+        state = self._states.get(user_id)
+        if state is None:
+            state = MobileFrameSyncState()
+            self._states[user_id] = state
+        return state
+
+    @staticmethod
+    def _extract_seq(frame_data: dict) -> int:
+        raw_value = frame_data.get("sq", frame_data.get("seq", -1))
+        try:
+            return int(raw_value)
+        except (TypeError, ValueError):
+            return -1
+
+    @staticmethod
+    def _extract_quality(frame_data: dict, role: str) -> float:
+        quality_key = "qi_w" if role == "wrist" else "qi_c"
+        raw_value = frame_data.get(quality_key, frame_data.get("qi", 0))
+        try:
+            quality = float(raw_value)
+        except (TypeError, ValueError):
+            return 0.0
+        return quality * 100.0 if quality <= 1.0 else quality
+
+    @staticmethod
+    def _merge_frames(*, wrist_frame: dict, chest_frame: dict) -> dict:
+        merged = dict(wrist_frame)
+        seq_num = MobileFrameSynchronizer._extract_seq(wrist_frame)
+        chest_seq = MobileFrameSynchronizer._extract_seq(chest_frame)
+        wrist_qi = int(merged.get("qi_w", merged.get("qi", 0)) or 0)
+        chest_qi = int(chest_frame.get("qi_c", chest_frame.get("qi", 0)) or 0)
+
+        merged["sq"] = seq_num
+        merged["cs"] = chest_seq if chest_seq >= 0 else seq_num
+        merged["ep"] = int(chest_frame.get("ep", chest_frame.get("r_peak", 0)) or 0)
+        merged["qi_w"] = wrist_qi
+        merged["qi_c"] = chest_qi
+        merged["qi"] = 1 if wrist_qi == 1 and chest_qi == 1 else 0
+        merged["cx"] = int(chest_frame.get("cx", 0) or 0)
+        merged["cy"] = int(chest_frame.get("cy", 0) or 0)
+        merged["cz"] = int(chest_frame.get("cz", 0) or 0)
+
+        if "ecg" in chest_frame:
+            merged["ecg"] = chest_frame["ecg"]
+        elif "ecg_value" in chest_frame:
+            merged["ecg"] = chest_frame["ecg_value"]
+
+        merged.setdefault("tp", wrist_frame.get("temperature", 0.0))
+        merged.setdefault("ax", 0)
+        merged.setdefault("ay", 0)
+        merged.setdefault("az", 0)
+        merged.setdefault("gx", 0)
+        merged.setdefault("gy", 0)
+        merged.setdefault("gz", 0)
+        merged.setdefault("bt", 100)
+        return merged
+
+    @staticmethod
+    def _trim_buffer(buffer: dict[int, dict]) -> None:
+        while len(buffer) > PARTIAL_FRAME_BUFFER_LIMIT:
+            oldest_seq = next(iter(buffer), None)
+            if oldest_seq is None:
+                return
+            buffer.pop(oldest_seq, None)
+
+
+mobile_frame_sync = MobileFrameSynchronizer()
+
+
+@dataclass
+class MobileSessionState:
+    wrist_connected: bool = False
+    chest_connected: bool = False
+    wrist_device_name: Optional[str] = None
+    wrist_device_address: Optional[str] = None
+    chest_device_name: Optional[str] = None
+    chest_device_address: Optional[str] = None
+    streaming: bool = False
+    last_event_at: Optional[datetime] = None
+    measurement_started_at: Optional[datetime] = None
+    measurement_stopped_at: Optional[datetime] = None
+    last_message: Optional[str] = None
+    last_error: Optional[str] = None
+    wrist_frames_uploaded: int = 0
+    chest_frames_uploaded: int = 0
+    merged_frames_uploaded: int = 0
+    readings_created: int = 0
+    last_seq: int = 0
+    buffer_fill: str = f"0/{WAVEFORM_WINDOW_FRAMES}"
+
+
+class MobileSessionTracker:
+    def __init__(self) -> None:
+        self._states: dict[str, MobileSessionState] = {}
+
+    def _state_for_user(self, user_id: str) -> MobileSessionState:
+        state = self._states.get(user_id)
+        if state is None:
+            state = MobileSessionState()
+            self._states[user_id] = state
+        return state
+
+    def mark_connected(
+        self,
+        user_id: str,
+        *,
+        role: str,
+        device_name: Optional[str],
+        device_address: Optional[str],
+    ) -> None:
+        state = self._state_for_user(user_id)
+        now = datetime.utcnow()
+        normalized_role = role.lower()
+        if normalized_role == "wrist":
+            state.wrist_connected = True
+            state.wrist_device_name = device_name
+            state.wrist_device_address = device_address
+        elif normalized_role == "chest":
+            state.chest_connected = True
+            state.chest_device_name = device_name
+            state.chest_device_address = device_address
+        state.last_event_at = now
+        state.last_message = f"{normalized_role.title()} connected."
+        state.last_error = None
+
+    def mark_disconnected(
+        self,
+        user_id: str,
+        *,
+        role: str,
+    ) -> None:
+        state = self._state_for_user(user_id)
+        now = datetime.utcnow()
+        normalized_role = role.lower()
+        if normalized_role == "wrist":
+            state.wrist_connected = False
+        elif normalized_role == "chest":
+            state.chest_connected = False
+        state.streaming = False
+        state.last_event_at = now
+        state.last_message = f"{normalized_role.title()} disconnected."
+
+    def mark_measurement_started(self, user_id: str) -> None:
+        state = self._state_for_user(user_id)
+        now = datetime.utcnow()
+        state.streaming = True
+        state.measurement_started_at = now
+        state.measurement_stopped_at = None
+        state.last_event_at = now
+        state.last_message = "Measurement session started."
+        state.last_error = None
+        state.wrist_frames_uploaded = 0
+        state.chest_frames_uploaded = 0
+        state.merged_frames_uploaded = 0
+        state.readings_created = 0
+        state.last_seq = 0
+        state.buffer_fill = f"0/{WAVEFORM_WINDOW_FRAMES}"
+
+    def mark_measurement_stopped(self, user_id: str) -> None:
+        state = self._state_for_user(user_id)
+        now = datetime.utcnow()
+        state.streaming = False
+        state.measurement_stopped_at = now
+        state.last_event_at = now
+        state.last_message = "Measurement session stopped."
+
+    def record_frame_result(self, user_id: str, *, role: str, result: FrameProcessResult) -> None:
+        state = self._state_for_user(user_id)
+        state.last_event_at = datetime.utcnow()
+        state.last_seq = result.seq_num
+        if result.buffer_fill:
+            state.buffer_fill = result.buffer_fill
+        state.last_message = result.message
+        state.last_error = None
+        normalized_role = role.lower()
+        if normalized_role == "wrist":
+            state.wrist_frames_uploaded += 1
+        elif normalized_role == "chest":
+            state.chest_frames_uploaded += 1
+        else:
+            state.merged_frames_uploaded += 1
+        if result.reading_created:
+            state.readings_created += 1
+
+    def record_error(self, user_id: str, *, message: str) -> None:
+        state = self._state_for_user(user_id)
+        state.last_event_at = datetime.utcnow()
+        state.last_error = message
+        state.last_message = message
+
+    def snapshot(self, user_id: str, *, data_stats: dict) -> MobileSessionStatusResponse:
+        state = self._state_for_user(user_id)
+        merged_stats = dict(data_stats)
+        merged_stats.update(
+            {
+                "buffer_fill": state.buffer_fill,
+                "wrist_frames_uploaded": state.wrist_frames_uploaded,
+                "chest_frames_uploaded": state.chest_frames_uploaded,
+                "merged_frames_uploaded": state.merged_frames_uploaded,
+                "readings_created": state.readings_created,
+                "last_seq": state.last_seq,
+            }
+        )
+        if state.last_error:
+            merged_stats["last_error"] = state.last_error
+        if state.last_message:
+            merged_stats["last_message"] = state.last_message
+
+        return MobileSessionStatusResponse(
+            success=True,
+            wrist_connected=state.wrist_connected,
+            chest_connected=state.chest_connected,
+            wrist_device_name=state.wrist_device_name,
+            wrist_device_address=state.wrist_device_address,
+            chest_device_name=state.chest_device_name,
+            chest_device_address=state.chest_device_address,
+            streaming=state.streaming,
+            last_event_at=_dt_to_ms(state.last_event_at),
+            measurement_started_at=_dt_to_ms(state.measurement_started_at),
+            measurement_stopped_at=_dt_to_ms(state.measurement_stopped_at),
+            data_stats=merged_stats,
+            message=state.last_message,
+        )
+
+
+mobile_session_tracker = MobileSessionTracker()
+
+
+def _dt_to_ms(value: Optional[datetime]) -> Optional[int]:
+    if value is None:
+        return None
+    return int(value.timestamp() * 1000)
+
+
 def ensure_ble_calibration_started(
     current_user: User,
     db: Session,
@@ -110,10 +461,6 @@ def ensure_ble_calibration_started(
     db.refresh(current_user)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  ENDPOINTS
-# ──────────────────────────────────────────────────────────────────────────────
-
 @router.get("/status", response_model=BLEStatusResponse, summary="Server BLE status (debug-only)")
 async def get_ble_status(
     ble: BLEManager = Depends(require_ble),
@@ -134,14 +481,15 @@ async def scan_for_device(
     """
     try:
         from bleak import BleakScanner
+
         devices = await BleakScanner.discover(timeout=SCAN_TIMEOUT_S)
-        for d in devices:
-            if d.name and WRIST_DEVICE_NAME.lower() in d.name.lower():
+        for device in devices:
+            if device.name and WRIST_DEVICE_NAME.lower() in device.name.lower():
                 return ScanResult(
                     found=True,
-                    device_name=d.name,
-                    device_address=d.address,
-                    message=f"Device found: {d.name} ({d.address})",
+                    device_name=device.name,
+                    device_address=device.address,
+                    message=f"Device found: {device.name} ({device.address})",
                 )
         return ScanResult(found=False, message="BPSync-Wrist not found. Make sure the device is on and nearby.")
     except ImportError:
@@ -163,10 +511,7 @@ async def start_streaming(
     if not status["connected"]:
         raise HTTPException(status_code=409, detail="Device is not connected.")
 
-    # Use email as the stable sensor owner key so historical and new rows stay grouped.
     ble._dm.set_user_id(canonical_sensor_user_key(current_user))
-
-    # Set user age for ML inference directly from user's age property
     ble._dm.set_user_age(current_user.age)
 
     ok = await ble.send_command("START")
@@ -192,7 +537,9 @@ async def stop_streaming(
 
 
 @router.post("/mobile-connected", response_model=CommandResponse, summary="Mark mobile BLE connection as active")
+@router.post("/mobile/session/connected", response_model=CommandResponse, summary="Track a mobile BLE device connection")
 async def mark_mobile_connected(
+    request: Optional[MobileDeviceEventRequest] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -203,10 +550,77 @@ async def mark_mobile_connected(
     3-day personalization countdown can start immediately.
     """
     ensure_ble_calibration_started(current_user, db, touch_last_connected=True)
+    if request is not None:
+        sensor_owner_key = canonical_sensor_user_key(current_user)
+        mobile_session_tracker.mark_connected(
+            sensor_owner_key,
+            role=request.role,
+            device_name=request.device_name,
+            device_address=request.device_address,
+        )
+        role_name = request.role.lower()
+        return CommandResponse(success=True, message=f"{role_name.title()} BLE connection recorded.")
     return CommandResponse(success=True, message="BLE connection recorded.")
 
 
+@router.post("/mobile-measurement/start", response_model=CommandResponse, summary="Reset mobile BLE measurement session")
+@router.post("/mobile/session/start", response_model=CommandResponse, summary="Start a mobile BLE measurement session")
+async def start_mobile_measurement_session(
+    data_manager: DataManager = Depends(require_data_manager),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Reset backend-side sync buffers before a new dual-device measurement starts.
+    """
+    ensure_ble_calibration_started(current_user, db, touch_last_connected=False)
+    sensor_owner_key = canonical_sensor_user_key(current_user)
+    data_manager.set_user_context(sensor_owner_key, current_user.age)
+    data_manager.reset_user_stream(sensor_owner_key)
+    mobile_frame_sync.reset_user(sensor_owner_key)
+    mobile_session_tracker.mark_measurement_started(sensor_owner_key)
+    return CommandResponse(success=True, message="Mobile BLE measurement session reset.")
+
+
+@router.post("/mobile/session/stop", response_model=CommandResponse, summary="Stop a mobile BLE measurement session")
+async def stop_mobile_measurement_session(
+    data_manager: DataManager = Depends(require_data_manager),
+    current_user: User = Depends(get_current_user),
+):
+    sensor_owner_key = canonical_sensor_user_key(current_user)
+    data_manager.reset_user_stream(sensor_owner_key)
+    mobile_frame_sync.reset_user(sensor_owner_key)
+    mobile_session_tracker.mark_measurement_stopped(sensor_owner_key)
+    return CommandResponse(success=True, message="Mobile BLE measurement session stopped.")
+
+
+@router.post("/mobile/session/disconnected", response_model=CommandResponse, summary="Track a mobile BLE device disconnect")
+async def mark_mobile_disconnected(
+    request: Optional[MobileDeviceEventRequest] = None,
+    current_user: User = Depends(get_current_user),
+):
+    sensor_owner_key = canonical_sensor_user_key(current_user)
+    if request is not None:
+        mobile_session_tracker.mark_disconnected(sensor_owner_key, role=request.role)
+        return CommandResponse(success=True, message=f"{request.role.title()} BLE disconnect recorded.")
+    mobile_session_tracker.mark_measurement_stopped(sensor_owner_key)
+    return CommandResponse(success=True, message="BLE disconnect recorded.")
+
+
+@router.get("/mobile/session/status", response_model=MobileSessionStatusResponse, summary="Inspect mobile BLE session state")
+async def get_mobile_session_status(
+    data_manager: DataManager = Depends(require_data_manager),
+    current_user: User = Depends(get_current_user),
+):
+    sensor_owner_key = canonical_sensor_user_key(current_user)
+    return mobile_session_tracker.snapshot(
+        sensor_owner_key,
+        data_stats=data_manager.get_stats(sensor_owner_key),
+    )
+
+
 @router.post("/mobile-frame", response_model=FrameProcessResult, summary="Upload a BLE frame from the mobile app")
+@router.post("/mobile/frames/merged", response_model=FrameProcessResult, summary="Upload a merged mobile BLE frame")
 async def ingest_mobile_frame(
     request: MobileFrameUploadRequest,
     data_manager: DataManager = Depends(require_data_manager),
@@ -214,11 +628,9 @@ async def ingest_mobile_frame(
     db: Session = Depends(get_db),
 ):
     """
-    Accept a raw JSON BLE frame uploaded by the Android app after it receives a
-    Notify packet from the wrist module.
+    Accept a fully merged BLE frame uploaded by the Android app.
 
-    This is the primary production flow:
-      wrist module -> Android phone -> POST /ble/mobile-frame -> DataManager
+    This remains available for backward compatibility and single-payload flows.
     """
     raw_frame = (request.raw_frame or "").strip()
     if not raw_frame:
@@ -229,7 +641,65 @@ async def ingest_mobile_frame(
     data_manager.set_user_context(sensor_owner_key, current_user.age)
     result = await data_manager.process_frame(raw_frame, user_id=sensor_owner_key)
     if not result.success:
+        mobile_session_tracker.record_error(sensor_owner_key, message=result.message or "Merged BLE frame processing failed.")
         raise HTTPException(status_code=400, detail=result.message or "BLE frame processing failed.")
+    mobile_session_tracker.record_frame_result(sensor_owner_key, role="merged", result=result)
+    return result
+
+
+@router.post("/mobile-frame/wrist", response_model=FrameProcessResult, summary="Upload a wrist BLE frame from the mobile app")
+@router.post("/mobile/frames/wrist", response_model=FrameProcessResult, summary="Upload a wrist mobile BLE frame")
+async def ingest_mobile_wrist_frame(
+    request: MobileFrameUploadRequest,
+    data_manager: DataManager = Depends(require_data_manager),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    raw_frame = (request.raw_frame or "").strip()
+    if not raw_frame:
+        raise HTTPException(status_code=400, detail="raw_frame is required.")
+
+    ensure_ble_calibration_started(current_user, db, touch_last_connected=False)
+    sensor_owner_key = canonical_sensor_user_key(current_user)
+    data_manager.set_user_context(sensor_owner_key, current_user.age)
+    result = await mobile_frame_sync.ingest_partial_frame(
+        role="wrist",
+        raw_frame=raw_frame,
+        user_id=sensor_owner_key,
+        data_manager=data_manager,
+    )
+    if not result.success:
+        mobile_session_tracker.record_error(sensor_owner_key, message=result.message or "Wrist BLE frame processing failed.")
+        raise HTTPException(status_code=400, detail=result.message or "Wrist BLE frame processing failed.")
+    mobile_session_tracker.record_frame_result(sensor_owner_key, role="wrist", result=result)
+    return result
+
+
+@router.post("/mobile-frame/chest", response_model=FrameProcessResult, summary="Upload a chest BLE frame from the mobile app")
+@router.post("/mobile/frames/chest", response_model=FrameProcessResult, summary="Upload a chest mobile BLE frame")
+async def ingest_mobile_chest_frame(
+    request: MobileFrameUploadRequest,
+    data_manager: DataManager = Depends(require_data_manager),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    raw_frame = (request.raw_frame or "").strip()
+    if not raw_frame:
+        raise HTTPException(status_code=400, detail="raw_frame is required.")
+
+    ensure_ble_calibration_started(current_user, db, touch_last_connected=False)
+    sensor_owner_key = canonical_sensor_user_key(current_user)
+    data_manager.set_user_context(sensor_owner_key, current_user.age)
+    result = await mobile_frame_sync.ingest_partial_frame(
+        role="chest",
+        raw_frame=raw_frame,
+        user_id=sensor_owner_key,
+        data_manager=data_manager,
+    )
+    if not result.success:
+        mobile_session_tracker.record_error(sensor_owner_key, message=result.message or "Chest BLE frame processing failed.")
+        raise HTTPException(status_code=400, detail=result.message or "Chest BLE frame processing failed.")
+    mobile_session_tracker.record_frame_result(sensor_owner_key, role="chest", result=result)
     return result
 
 
