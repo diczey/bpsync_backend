@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
@@ -34,9 +35,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -63,6 +67,7 @@ fun LoginScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val isTurkish = rememberIsTurkish()
+    val focusManager = LocalFocusManager.current
 
     fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
 
@@ -131,7 +136,14 @@ fun LoginScreen(
                 value = uiState.email,
                 onValueChange = viewModel::updateEmail,
                 placeholder = t("Email Address", "E-posta Adresi"),
-                icon = Icons.Default.Email
+                icon = Icons.Default.Email,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                )
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -141,7 +153,14 @@ fun LoginScreen(
                 onValueChange = viewModel::updatePassword,
                 placeholder = t("Password", "Şifre"),
                 icon = Icons.Default.Lock,
-                isPassword = true
+                isPassword = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { viewModel.login() }
+                )
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -209,7 +228,9 @@ private fun LoginGlassInput(
     onValueChange: (String) -> Unit,
     placeholder: String,
     icon: ImageVector,
-    isPassword: Boolean = false
+    isPassword: Boolean = false,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default
 ) {
     Box(
         modifier = Modifier
@@ -235,7 +256,9 @@ private fun LoginGlassInput(
 
             TextField(
                 value = value,
-                onValueChange = onValueChange,
+                onValueChange = { updated ->
+                    onValueChange(updated.replace("\n", "").replace("\r", ""))
+                },
                 placeholder = { Text(placeholder, color = TextMuted) },
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
@@ -253,11 +276,9 @@ private fun LoginGlassInput(
                 } else {
                     androidx.compose.ui.text.input.VisualTransformation.None
                 },
-                keyboardOptions = if (isPassword) {
-                    KeyboardOptions(keyboardType = KeyboardType.Password)
-                } else {
-                    KeyboardOptions.Default
-                },
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
         }

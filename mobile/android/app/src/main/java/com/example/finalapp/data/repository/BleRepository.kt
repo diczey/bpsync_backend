@@ -20,6 +20,8 @@ import com.example.finalapp.data.api.ApiClient
 import com.example.finalapp.data.model.BLEStatusResponse
 import com.example.finalapp.data.model.BleFrameUploadRequest
 import com.example.finalapp.data.model.PredictionModelInfoResponse
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.LinkedHashMap
@@ -29,13 +31,40 @@ import kotlin.coroutines.resume
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import org.json.JSONArray
+import org.json.JSONObject
+
+enum class BleDeviceRole {
+    WRIST,
+    CHEST,
+    UNKNOWN
+}
 
 data class BleDevice(
     val name: String,
-    val address: String
+    val address: String,
+    val role: BleDeviceRole = BleDeviceRole.UNKNOWN
 )
+
+private data class DeviceSession(
+    val role: BleDeviceRole,
+    val serviceUuid: UUID,
+    val dataCharUuid: UUID,
+    val cmdCharUuid: UUID,
+    var gatt: BluetoothGatt? = null,
+    var dataCharacteristic: BluetoothGattCharacteristic? = null,
+    var commandCharacteristic: BluetoothGattCharacteristic? = null,
+    var device: BleDevice? = null,
+    var connectedAt: String? = null,
+    var mtu: Int = 23
+) {
+    val isConnected: Boolean
+        get() = gatt != null && device != null
+}
 
 private object LocalBleStateStore {
     var status: BLEStatusResponse = BLEStatusResponse(
@@ -44,47 +73,84 @@ private object LocalBleStateStore {
         deviceName = "",
         deviceAddress = null,
         connectedAt = null,
-        dataStats = emptyMap()
+        dataStats = emptyMap(),
+        wristConnected = false,
+        chestConnected = false,
+        wristDeviceName = null,
+        wristDeviceAddress = null,
+        chestDeviceName = null,
+        chestDeviceAddress = null,
+        streaming = false
     )
         private set
 
     fun update(status: BLEStatusResponse) {
         this.status = status
     }
-
-    fun updateDataStats(transform: (Map<String, Any>) -> Map<String, Any>) {
-        status = status.copy(dataStats = transform(status.dataStats))
-    }
 }
 
 private object AndroidBleManager {
     private const val SCAN_DURATION_MS = 6_000L
     private const val CONNECTION_TIMEOUT_MS = 10_000L
-    private const val SOURCE_TAG = "android-local-ble"
+    private const val SOURCE_TAG = "android-dual-ble"
     private const val DESIRED_MTU = 247
+    private const val WINDOW_SIZE = 25
+    private const val MAX_BUFFERED_FRAMES = 80
+    private const val CHEST_PACKET_SIZE = 24
+    private const val CHEST_ECG_BATCH_SIZE = 10
 
     private val WRIST_SERVICE_UUID: UUID = UUID.fromString("19B10000-E8F2-537E-4F6C-D104768A1214")
-    private val DATA_CHAR_UUID: UUID = UUID.fromString("19B10001-E8F2-537E-4F6C-D104768A1214")
-    private val CMD_CHAR_UUID: UUID = UUID.fromString("19B10002-E8F2-537E-4F6C-D104768A1214")
+    private val WRIST_DATA_UUID: UUID = UUID.fromString("19B10001-E8F2-537E-4F6C-D104768A1214")
+    private val WRIST_CMD_UUID: UUID = UUID.fromString("19B10002-E8F2-537E-4F6C-D104768A1214")
+
+    private val CHEST_SERVICE_UUID: UUID = UUID.fromString("29B10000-E8F2-537E-4F6C-D104768A1214")
+    private val CHEST_DATA_UUID: UUID = UUID.fromString("29B10001-E8F2-537E-4F6C-D104768A1214")
+    private val CHEST_CMD_UUID: UUID = UUID.fromString("29B10002-E8F2-537E-4F6C-D104768A1214")
+
     private val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private val sessions = linkedMapOf(
+        BleDeviceRole.WRIST to DeviceSession(
+            role = BleDeviceRole.WRIST,
+            serviceUuid = WRIST_SERVICE_UUID,
+            dataCharUuid = WRIST_DATA_UUID,
+            cmdCharUuid = WRIST_CMD_UUID
+        ),
+        BleDeviceRole.CHEST to DeviceSession(
+            role = BleDeviceRole.CHEST,
+            serviceUuid = CHEST_SERVICE_UUID,
+            dataCharUuid = CHEST_DATA_UUID,
+            cmdCharUuid = CHEST_CMD_UUID
+        )
+    )
+
+    private val wristFrameBuffer = LinkedHashMap<Int, JSONObject>()
+    private val chestFrameBuffer = LinkedHashMap<Int, JSONObject>()
+
     private var appContext: Context? = null
-    private var bluetoothGatt: BluetoothGatt? = null
     private var activeScanCallback: ScanCallback? = null
-    private var dataCharacteristic: BluetoothGattCharacteristic? = null
-    private var commandCharacteristic: BluetoothGattCharacteristic? = null
-    private var activeDevice: BleDevice? = null
+
+    private var measurementStreaming = false
+    private var framesReceived = 0
+    private var wristFramesReceived = 0
+    private var chestFramesReceived = 0
+    private var framesUploaded = 0
+    private var uploadFailures = 0
+    private var measurementsReady = 0
+    private var lastMeasurement: String? = null
+    private var lastSeq = 0
+    private var lastError: String? = null
 
     fun initialize(context: Context) {
         appContext = context.applicationContext
-        syncAvailability()
+        publishStatus()
     }
 
     fun currentStatus(): BLEStatusResponse {
-        syncAvailability()
+        publishStatus()
         return LocalBleStateStore.status
     }
 
@@ -96,7 +162,7 @@ private object AndroidBleManager {
             ?: return RepositoryResult.Error("This device does not support Bluetooth LE.")
 
         if (!adapter.isEnabled) {
-            markDisconnected(available = false)
+            publishStatus()
             return RepositoryResult.Error("Bluetooth is turned off. Turn it on and try again.")
         }
 
@@ -126,14 +192,22 @@ private object AndroidBleManager {
                 override fun onScanResult(callbackType: Int, result: ScanResult) {
                     val device = result.device ?: return
                     val name = device.name ?: result.scanRecord?.deviceName ?: "Unnamed BLE Device"
-                    discovered[device.address] = BleDevice(name = name, address = device.address)
+                    discovered[device.address] = BleDevice(
+                        name = name,
+                        address = device.address,
+                        role = classifyRole(name, result)
+                    )
                 }
 
                 override fun onBatchScanResults(results: MutableList<ScanResult>) {
                     results.forEach { result ->
                         val device = result.device ?: return@forEach
                         val name = device.name ?: result.scanRecord?.deviceName ?: "Unnamed BLE Device"
-                        discovered[device.address] = BleDevice(name = name, address = device.address)
+                        discovered[device.address] = BleDevice(
+                            name = name,
+                            address = device.address,
+                            role = classifyRole(name, result)
+                        )
                     }
                 }
 
@@ -146,7 +220,10 @@ private object AndroidBleManager {
             scanner.startScan(callback)
 
             val timeoutRunnable = Runnable {
-                val devices = discovered.values.toList()
+                val devices = discovered.values
+                    .sortedWith(
+                        compareBy<BleDevice>({ roleRank(it.role) }, { it.name.lowercase(Locale.US) }, { it.address })
+                    )
                 if (devices.isEmpty()) {
                     finish(RepositoryResult.Error("No Bluetooth LE devices found nearby."))
                 } else {
@@ -168,18 +245,24 @@ private object AndroidBleManager {
     suspend fun connect(context: Context, device: BleDevice): RepositoryResult<String> {
         initialize(context)
 
+        if (device.role == BleDeviceRole.UNKNOWN) {
+            return RepositoryResult.Error("Please choose a Wrist or Chest device.")
+        }
+
         val adapter = bluetoothAdapter()
             ?: return RepositoryResult.Error("This device does not support Bluetooth LE.")
 
         if (!adapter.isEnabled) {
-            markDisconnected(available = false)
+            publishStatus()
             return RepositoryResult.Error("Bluetooth is turned off. Turn it on and try again.")
         }
 
         val remoteDevice = runCatching { adapter.getRemoteDevice(device.address) }.getOrNull()
             ?: return RepositoryResult.Error("Couldn't resolve the selected Bluetooth device.")
 
-        disconnect()
+        disconnectSession(device.role, clearMeasurementState = false)
+
+        val session = sessions.getValue(device.role)
 
         return suspendCancellableCoroutine { continuation ->
             var completed = false
@@ -188,7 +271,7 @@ private object AndroidBleManager {
             fun finish(result: RepositoryResult<String>) {
                 if (completed) return
                 completed = true
-                mainHandler.removeCallbacksAndMessages(remoteDevice.address)
+                mainHandler.removeCallbacksAndMessages(device.address)
                 continuation.resume(result)
             }
 
@@ -197,8 +280,13 @@ private object AndroidBleManager {
                     gatt.disconnect()
                     gatt.close()
                 }
-                clearGattState()
-                markDisconnected(available = true)
+                if (session.gatt == gatt) {
+                    clearSession(session)
+                }
+                if (!bothDevicesConnected()) {
+                    measurementStreaming = false
+                }
+                publishStatus()
                 finish(RepositoryResult.Error("Connection timed out. Try again closer to the device."))
             }
 
@@ -206,22 +294,16 @@ private object AndroidBleManager {
                 override fun onConnectionStateChange(gattInstance: BluetoothGatt, status: Int, newState: Int) {
                     when {
                         status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED -> {
-                            bluetoothGatt = gattInstance
-                            activeDevice = device
-                            LocalBleStateStore.update(
-                                BLEStatusResponse(
-                                    available = true,
-                                    connected = true,
-                                    deviceName = device.name,
-                                    deviceAddress = device.address,
-                                    connectedAt = currentTimestamp(),
-                                    dataStats = baseStats(device, streaming = false)
-                                )
-                            )
+                            session.gatt = gattInstance
+                            session.device = device
+                            session.connectedAt = currentTimestamp()
+                            session.mtu = 23
+                            publishStatus()
                             scope.launch {
                                 notifyMobileConnected()
                             }
                             finish(RepositoryResult.Success("Connected to ${device.name}"))
+
                             runCatching {
                                 gattInstance.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
                             }
@@ -239,13 +321,16 @@ private object AndroidBleManager {
 
                         newState == BluetoothProfile.STATE_DISCONNECTED -> {
                             runCatching { gattInstance.close() }
-                            if (bluetoothGatt == gattInstance) {
-                                clearGattState()
+                            if (session.gatt == gattInstance) {
+                                clearSession(session)
                             }
-                            markDisconnected(available = true)
+                            if (!bothDevicesConnected()) {
+                                measurementStreaming = false
+                            }
+                            publishStatus()
                             if (!completed) {
                                 val message = if (status == BluetoothGatt.GATT_SUCCESS) {
-                                    "The device disconnected before streaming started."
+                                    "${roleLabel(device.role)} disconnected before measurement started."
                                 } else {
                                     "Couldn't connect to ${device.name}. Make sure it's nearby and not already connected elsewhere."
                                 }
@@ -257,34 +342,34 @@ private object AndroidBleManager {
 
                 override fun onServicesDiscovered(gattInstance: BluetoothGatt, status: Int) {
                     if (status != BluetoothGatt.GATT_SUCCESS) {
-                        updateLastError("Service discovery failed: $status")
+                        updateLastError("Service discovery failed for ${roleLabel(device.role)}: $status")
                         return
                     }
 
-                    val service = gattInstance.getService(WRIST_SERVICE_UUID)
-                    val notifyChar = service?.getCharacteristic(DATA_CHAR_UUID)
-                    val cmdChar = service?.getCharacteristic(CMD_CHAR_UUID)
+                    val service = gattInstance.getService(session.serviceUuid)
+                    val notifyChar = service?.getCharacteristic(session.dataCharUuid)
+                    val cmdChar = service?.getCharacteristic(session.cmdCharUuid)
 
                     if (service == null || notifyChar == null || cmdChar == null) {
-                        updateLastError("BPSync wrist service or characteristics were not found.")
+                        updateLastError("${roleLabel(device.role)} service or characteristics were not found.")
                         return
                     }
 
-                    dataCharacteristic = notifyChar
-                    commandCharacteristic = cmdChar
+                    session.dataCharacteristic = notifyChar
+                    session.commandCharacteristic = cmdChar
 
                     val notificationsEnabled = runCatching {
                         gattInstance.setCharacteristicNotification(notifyChar, true)
                     }.getOrDefault(false)
 
                     if (!notificationsEnabled) {
-                        updateLastError("Couldn't enable BLE notifications.")
+                        updateLastError("Couldn't enable ${roleLabel(device.role)} notifications.")
                         return
                     }
 
                     val descriptor = notifyChar.getDescriptor(CCCD_UUID)
                     if (descriptor == null) {
-                        sendStartCommand(gattInstance)
+                        publishStatus()
                         return
                     }
 
@@ -301,13 +386,10 @@ private object AndroidBleManager {
 
                 override fun onMtuChanged(gattInstance: BluetoothGatt, mtu: Int, status: Int) {
                     if (status == BluetoothGatt.GATT_SUCCESS) {
-                        LocalBleStateStore.updateDataStats { current ->
-                            current.toMutableMap().apply {
-                                put("mtu", mtu)
-                            }
-                        }
+                        session.mtu = mtu
+                        publishStatus()
                     } else {
-                        updateLastError("MTU negotiation failed: $status")
+                        updateLastError("MTU negotiation failed for ${roleLabel(device.role)}: $status")
                     }
 
                     runCatching { gattInstance.discoverServices() }
@@ -318,11 +400,11 @@ private object AndroidBleManager {
                     descriptor: BluetoothGattDescriptor,
                     status: Int
                 ) {
-                    if (descriptor.characteristic?.uuid != DATA_CHAR_UUID) return
+                    if (descriptor.characteristic?.uuid != session.dataCharUuid) return
                     if (status == BluetoothGatt.GATT_SUCCESS) {
-                        sendStartCommand(gattInstance)
+                        publishStatus()
                     } else {
-                        updateLastError("Notification subscription failed: $status")
+                        updateLastError("Notification subscription failed for ${roleLabel(device.role)}: $status")
                     }
                 }
 
@@ -331,11 +413,9 @@ private object AndroidBleManager {
                     characteristic: BluetoothGattCharacteristic,
                     status: Int
                 ) {
-                    if (characteristic.uuid != CMD_CHAR_UUID) return
-                    if (status == BluetoothGatt.GATT_SUCCESS) {
-                        updateStreamingState(true)
-                    } else {
-                        updateLastError("START command failed: $status")
+                    if (characteristic.uuid != session.cmdCharUuid) return
+                    if (status != BluetoothGatt.GATT_SUCCESS) {
+                        updateLastError("${roleLabel(device.role)} command failed: $status")
                     }
                 }
 
@@ -343,7 +423,7 @@ private object AndroidBleManager {
                     gattInstance: BluetoothGatt,
                     characteristic: BluetoothGattCharacteristic
                 ) {
-                    handleNotification(characteristic.value ?: ByteArray(0))
+                    handleNotification(session.role, characteristic.value ?: ByteArray(0))
                 }
 
                 override fun onCharacteristicChanged(
@@ -351,7 +431,7 @@ private object AndroidBleManager {
                     characteristic: BluetoothGattCharacteristic,
                     value: ByteArray
                 ) {
-                    handleNotification(value)
+                    handleNotification(session.role, value)
                 }
             }
 
@@ -361,32 +441,81 @@ private object AndroidBleManager {
                 remoteDevice.connectGatt(context.applicationContext, false, callback)
             }
 
-            bluetoothGatt = gatt
-            mainHandler.postAtTime(timeoutRunnable, remoteDevice.address, SystemClock.uptimeMillis() + CONNECTION_TIMEOUT_MS)
+            session.gatt = gatt
+            mainHandler.postAtTime(timeoutRunnable, device.address, SystemClock.uptimeMillis() + CONNECTION_TIMEOUT_MS)
 
             continuation.invokeOnCancellation {
-                mainHandler.removeCallbacksAndMessages(remoteDevice.address)
+                mainHandler.removeCallbacksAndMessages(device.address)
                 runCatching {
                     gatt.disconnect()
                     gatt.close()
                 }
-                if (bluetoothGatt == gatt) {
-                    clearGattState()
+                if (session.gatt == gatt) {
+                    clearSession(session)
                 }
-                markDisconnected(available = adapter.isEnabled)
+                if (!bothDevicesConnected()) {
+                    measurementStreaming = false
+                }
+                publishStatus()
             }
         }
     }
 
     @SuppressLint("MissingPermission")
-    fun disconnect() {
-        val adapter = bluetoothAdapter()
-        runCatching {
-            bluetoothGatt?.disconnect()
-            bluetoothGatt?.close()
+    suspend fun startMeasurement(): RepositoryResult<String> {
+        val wrist = sessions.getValue(BleDeviceRole.WRIST)
+        val chest = sessions.getValue(BleDeviceRole.CHEST)
+
+        if (!wrist.isConnected || !chest.isConnected) {
+            return RepositoryResult.Error("Connect both Wrist and Chest before starting measurement.")
         }
-        clearGattState()
-        markDisconnected(available = adapter?.isEnabled == true)
+
+        measurementStreaming = false
+        resetMeasurementCounters()
+        clearBuffers()
+        lastError = null
+        publishStatus()
+
+        val (wristStarted, chestStarted) = coroutineScope {
+            val wristCommand = async { writeCommand(wrist, "START") }
+            val chestCommand = async { writeCommand(chest, "START") }
+            wristCommand.await() to chestCommand.await()
+        }
+
+        if (!wristStarted || !chestStarted) {
+            if (wristStarted) writeCommand(wrist, "STOP")
+            if (chestStarted) writeCommand(chest, "STOP")
+            measurementStreaming = false
+            publishStatus()
+            return RepositoryResult.Error("Couldn't send START to both BLE devices.")
+        }
+
+        measurementStreaming = true
+        publishStatus()
+        return RepositoryResult.Success("Measurement started on Wrist and Chest.")
+    }
+
+    @SuppressLint("MissingPermission")
+    suspend fun stopMeasurement(): RepositoryResult<String> {
+        val connectedSessions = sessions.values.filter { it.isConnected }
+        if (connectedSessions.isEmpty()) {
+            return RepositoryResult.Error("No connected BLE devices to stop.")
+        }
+
+        connectedSessions.forEach { writeCommand(it, "STOP") }
+        measurementStreaming = false
+        clearBuffers()
+        publishStatus()
+        return RepositoryResult.Success("Measurement stopped.")
+    }
+
+    @SuppressLint("MissingPermission")
+    fun disconnect() {
+        disconnectSession(BleDeviceRole.WRIST, clearMeasurementState = false)
+        disconnectSession(BleDeviceRole.CHEST, clearMeasurementState = false)
+        measurementStreaming = false
+        clearBuffers()
+        publishStatus()
     }
 
     private fun bluetoothAdapter(): BluetoothAdapter? {
@@ -395,39 +524,132 @@ private object AndroidBleManager {
             ?.adapter
     }
 
-    private fun syncAvailability() {
+    @SuppressLint("MissingPermission")
+    private fun disconnectSession(role: BleDeviceRole, clearMeasurementState: Boolean) {
+        val session = sessions[role] ?: return
+        runCatching {
+            session.gatt?.disconnect()
+            session.gatt?.close()
+        }
+        clearSession(session)
+        if (clearMeasurementState) {
+            measurementStreaming = false
+            clearBuffers()
+        }
+    }
+
+    private fun clearSession(session: DeviceSession) {
+        session.gatt = null
+        session.dataCharacteristic = null
+        session.commandCharacteristic = null
+        session.device = null
+        session.connectedAt = null
+        session.mtu = 23
+    }
+
+    private fun clearBuffers() {
+        wristFrameBuffer.clear()
+        chestFrameBuffer.clear()
+    }
+
+    private fun resetMeasurementCounters() {
+        framesReceived = 0
+        wristFramesReceived = 0
+        chestFramesReceived = 0
+        framesUploaded = 0
+        uploadFailures = 0
+        measurementsReady = 0
+        lastMeasurement = null
+        lastSeq = 0
+    }
+
+    private fun publishStatus() {
         val adapter = bluetoothAdapter()
-        val current = LocalBleStateStore.status
-        LocalBleStateStore.update(
-            current.copy(
-                available = adapter?.isEnabled == true,
-                connected = current.connected && bluetoothGatt != null
-            )
-        )
-    }
+        val available = adapter?.isEnabled == true
+        val wrist = sessions.getValue(BleDeviceRole.WRIST)
+        val chest = sessions.getValue(BleDeviceRole.CHEST)
 
-    private fun clearGattState() {
-        bluetoothGatt = null
-        dataCharacteristic = null
-        commandCharacteristic = null
-        activeDevice = null
-    }
+        val connected = wrist.isConnected || chest.isConnected
+        val readyToStart = wrist.isConnected && chest.isConnected
+        val summaryName = when {
+            wrist.isConnected && chest.isConnected -> "${wrist.device?.name ?: "Wrist"} + ${chest.device?.name ?: "Chest"}"
+            wrist.isConnected -> wrist.device?.name.orEmpty()
+            chest.isConnected -> chest.device?.name.orEmpty()
+            else -> ""
+        }
+        val summaryAddress = when {
+            wrist.isConnected && chest.isConnected -> listOfNotNull(wrist.device?.address, chest.device?.address).joinToString(" | ")
+            wrist.isConnected -> wrist.device?.address
+            chest.isConnected -> chest.device?.address
+            else -> null
+        }
 
-    private fun markDisconnected(available: Boolean) {
+        val matchedCount = wristFrameBuffer.keys.count { chestFrameBuffer.containsKey(it) }.coerceAtMost(WINDOW_SIZE)
+        val dataStats = linkedMapOf<String, Any>(
+            "source" to SOURCE_TAG,
+            "streaming" to measurementStreaming,
+            "ready_to_start" to readyToStart,
+            "frames_received" to framesReceived,
+            "wrist_frames_received" to wristFramesReceived,
+            "chest_frames_received" to chestFramesReceived,
+            "frames_uploaded" to framesUploaded,
+            "upload_failures" to uploadFailures,
+            "measurements_ready" to measurementsReady,
+            "buffer_fill" to "$matchedCount/$WINDOW_SIZE",
+            "wrist_buffered" to wristFrameBuffer.size,
+            "chest_buffered" to chestFrameBuffer.size,
+            "last_seq" to lastSeq,
+            "wrist_mtu" to wrist.mtu,
+            "chest_mtu" to chest.mtu
+        ).apply {
+            lastMeasurement?.let { put("last_measurement", it) }
+            lastError?.let { put("last_error", it) }
+        }
+
         LocalBleStateStore.update(
             BLEStatusResponse(
                 available = available,
-                connected = false,
-                deviceName = "",
-                deviceAddress = null,
-                connectedAt = null,
-                dataStats = emptyMap()
+                connected = connected,
+                deviceName = summaryName,
+                deviceAddress = summaryAddress,
+                connectedAt = listOfNotNull(wrist.connectedAt, chest.connectedAt).minOrNull(),
+                dataStats = dataStats,
+                wristConnected = wrist.isConnected,
+                chestConnected = chest.isConnected,
+                wristDeviceName = wrist.device?.name,
+                wristDeviceAddress = wrist.device?.address,
+                chestDeviceName = chest.device?.name,
+                chestDeviceAddress = chest.device?.address,
+                streaming = measurementStreaming
             )
         )
     }
 
-    private fun currentTimestamp(): String {
-        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(Date())
+    private fun roleRank(role: BleDeviceRole): Int {
+        return when (role) {
+            BleDeviceRole.WRIST -> 0
+            BleDeviceRole.CHEST -> 1
+            BleDeviceRole.UNKNOWN -> 2
+        }
+    }
+
+    private fun classifyRole(name: String, result: ScanResult): BleDeviceRole {
+        val normalizedName = name.lowercase(Locale.US)
+        return when {
+            "wrist" in normalizedName -> BleDeviceRole.WRIST
+            "chest" in normalizedName -> BleDeviceRole.CHEST
+            result.scanRecord?.serviceUuids?.any { it.uuid == WRIST_SERVICE_UUID } == true -> BleDeviceRole.WRIST
+            result.scanRecord?.serviceUuids?.any { it.uuid == CHEST_SERVICE_UUID } == true -> BleDeviceRole.CHEST
+            else -> BleDeviceRole.UNKNOWN
+        }
+    }
+
+    private fun roleLabel(role: BleDeviceRole): String {
+        return when (role) {
+            BleDeviceRole.WRIST -> "Wrist"
+            BleDeviceRole.CHEST -> "Chest"
+            BleDeviceRole.UNKNOWN -> "Unknown"
+        }
     }
 
     private fun scanFailureMessage(errorCode: Int): String {
@@ -440,33 +662,21 @@ private object AndroidBleManager {
         }
     }
 
-    private fun baseStats(device: BleDevice, streaming: Boolean): Map<String, Any> {
-        return linkedMapOf(
-            "source" to SOURCE_TAG,
-            "device_name" to device.name,
-            "device_address" to device.address,
-            "streaming" to streaming,
-            "mtu" to 23,
-            "frames_received" to 0,
-            "frames_uploaded" to 0,
-            "upload_failures" to 0,
-            "measurements_ready" to 0,
-            "buffer_fill" to "0/25",
-            "last_seq" to 0
-        )
-    }
-
     @SuppressLint("MissingPermission")
-    private fun sendStartCommand(gatt: BluetoothGatt) {
-        val characteristic = commandCharacteristic ?: return
-        val payload = "START".toByteArray(Charsets.UTF_8)
+    private fun writeCommand(session: DeviceSession, command: String): Boolean {
+        val gatt = session.gatt ?: return false
+        val characteristic = session.commandCharacteristic ?: return false
+        val payload = command.toByteArray(Charsets.UTF_8)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            gatt.writeCharacteristic(
-                characteristic,
-                payload,
-                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-            )
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            runCatching {
+                gatt.writeCharacteristic(
+                    characteristic,
+                    payload,
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                )
+                true
+            }.getOrDefault(false)
         } else {
             characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
             characteristic.value = payload
@@ -474,23 +684,254 @@ private object AndroidBleManager {
         }
     }
 
-    private fun handleNotification(value: ByteArray) {
+    private fun handleNotification(role: BleDeviceRole, value: ByteArray) {
         if (value.isEmpty()) return
 
-        val payload = runCatching { value.toString(Charsets.UTF_8) }.getOrNull()?.trim().orEmpty()
-        if (payload.isBlank()) return
+        framesReceived += 1
+        when (role) {
+            BleDeviceRole.WRIST -> {
+                wristFramesReceived += 1
+                val payload = runCatching { value.toString(Charsets.UTF_8) }.getOrNull()?.trim().orEmpty()
+                if (payload.isBlank()) return
+                handleWristPayload(payload)
+            }
 
-        incrementCounter("frames_received")
-        val device = activeDevice
-        scope.launch {
-            uploadFrame(payload, device)
+            BleDeviceRole.CHEST -> {
+                chestFramesReceived += 1
+                handleChestPayload(value)
+            }
+
+            BleDeviceRole.UNKNOWN -> Unit
         }
+    }
+
+    private fun handleWristPayload(rawFrame: String) {
+        val normalized = normalizeWristFrame(rawFrame) ?: run {
+            updateLastError("Wrist frame could not be parsed.")
+            return
+        }
+
+        lastSeq = normalized.optInt("sq", lastSeq)
+
+        val hasEmbeddedChestData = normalized.has("ecg") ||
+            normalized.optInt("qi_c", 0) == 1 ||
+            normalized.optInt("ep", 0) == 1 ||
+            normalized.has("cs")
+
+        if (!sessions.getValue(BleDeviceRole.CHEST).isConnected || hasEmbeddedChestData) {
+            if (measurementStreaming || hasEmbeddedChestData) {
+                val wristDevice = sessions.getValue(BleDeviceRole.WRIST).device
+                scope.launch {
+                    uploadFrame(normalized.toString(), wristDevice)
+                }
+            }
+            publishStatus()
+            return
+        }
+
+        val seq = normalized.optInt("sq", -1)
+        if (seq < 0) {
+            updateLastError("Wrist frame is missing seq.")
+            return
+        }
+
+        wristFrameBuffer[seq] = normalized
+        trimBuffer(wristFrameBuffer)
+        publishStatus()
+        processBufferedFrames()
+    }
+
+    private fun handleChestPayload(rawFrame: ByteArray) {
+        val normalized = normalizeChestFrame(rawFrame) ?: run {
+            updateLastError("Chest frame could not be parsed.")
+            return
+        }
+
+        val seq = normalized.optInt("sq", -1)
+        if (seq < 0) {
+            updateLastError("Chest frame is missing seq.")
+            return
+        }
+
+        chestFrameBuffer[seq] = normalized
+        trimBuffer(chestFrameBuffer)
+        publishStatus()
+        processBufferedFrames()
+    }
+
+    private fun trimBuffer(buffer: LinkedHashMap<Int, JSONObject>) {
+        while (buffer.size > MAX_BUFFERED_FRAMES) {
+            val oldestSeq = buffer.entries.firstOrNull()?.key ?: return
+            buffer.remove(oldestSeq)
+        }
+    }
+
+    private fun processBufferedFrames() {
+        if (!measurementStreaming) return
+
+        val commonSeqs = wristFrameBuffer.keys
+            .filter { chestFrameBuffer.containsKey(it) }
+            .sorted()
+            .take(WINDOW_SIZE)
+
+        if (commonSeqs.size < WINDOW_SIZE) {
+            publishStatus()
+            return
+        }
+
+        val mergedFrames = commonSeqs.mapNotNull { seq ->
+            val wrist = wristFrameBuffer[seq] ?: return@mapNotNull null
+            val chest = chestFrameBuffer[seq] ?: return@mapNotNull null
+            mergeFrames(wrist, chest)
+        }
+
+        commonSeqs.forEach { seq ->
+            wristFrameBuffer.remove(seq)
+            chestFrameBuffer.remove(seq)
+        }
+        publishStatus()
+
+        val wristDevice = sessions.getValue(BleDeviceRole.WRIST).device
+        scope.launch {
+            mergedFrames.forEach { merged ->
+                uploadFrame(merged, wristDevice)
+            }
+        }
+    }
+
+    private fun normalizeWristFrame(rawFrame: String): JSONObject? {
+        val source = runCatching { JSONObject(rawFrame) }.getOrNull() ?: return null
+
+        if (source.has("ts") && source.has("sq") && source.has("pi") && source.has("pr")) {
+            if (!source.has("tp")) source.put("tp", source.optDouble("temperature", 0.0))
+            if (!source.has("bt")) source.put("bt", 100)
+            if (!source.has("qi_w")) source.put("qi_w", source.optInt("qi", 0))
+            if (!source.has("qi_c")) source.put("qi_c", 0)
+            if (!source.has("qi")) {
+                val qiW = source.optInt("qi_w", 0)
+                val qiC = source.optInt("qi_c", 0)
+                source.put("qi", if (qiC == 0) qiW else if (qiW == 1 && qiC == 1) 1 else 0)
+            }
+            return source
+        }
+
+        val seq = source.optInt("seq", source.optInt("sq", -1))
+        if (seq < 0) return null
+
+        val normalized = JSONObject()
+        normalized.put("ts", source.optLong("timestamp", source.optLong("ts", System.currentTimeMillis())))
+        normalized.put("sq", seq)
+        normalized.put("pi", extractJsonValue(source, "ppg_ir", "pi") ?: return null)
+        normalized.put("pr", extractJsonValue(source, "ppg_red", "pr") ?: return null)
+        normalized.put("ax", source.optInt("ax", 0))
+        normalized.put("ay", source.optInt("ay", 0))
+        normalized.put("az", source.optInt("az", 0))
+        normalized.put("gx", source.optInt("gx", 0))
+        normalized.put("gy", source.optInt("gy", 0))
+        normalized.put("gz", source.optInt("gz", 0))
+        normalized.put("tp", source.optDouble("temperature", source.optDouble("tp", 0.0)))
+        normalized.put("qi_w", source.optInt("qi_w", source.optInt("qi", 0)))
+        normalized.put("qi_c", source.optInt("qi_c", 0))
+        normalized.put("qi", source.optInt("qi", source.optInt("qi_w", 0)))
+        normalized.put("bt", source.optInt("bt", 100))
+        return normalized
+    }
+
+    private fun normalizeChestFrame(rawFrame: ByteArray): JSONObject? {
+        if (rawFrame.size == CHEST_PACKET_SIZE) {
+            return runCatching {
+                val buffer = ByteBuffer.wrap(rawFrame).order(ByteOrder.LITTLE_ENDIAN)
+                val ecgValues = JSONArray()
+
+                val ep = buffer.get().toInt() and 0xFF
+                val qiC = buffer.get().toInt() and 0xFF
+                val seq = buffer.short.toInt() and 0xFFFF
+
+                repeat(CHEST_ECG_BATCH_SIZE) {
+                    ecgValues.put(buffer.short.toInt())
+                }
+
+                JSONObject().apply {
+                    put("ts", System.currentTimeMillis())
+                    put("sq", seq)
+                    put("ep", ep)
+                    put("qi_c", qiC)
+                    put("ecg", ecgValues)
+                }
+            }.getOrNull()
+        }
+
+        val rawText = runCatching { rawFrame.toString(Charsets.UTF_8) }.getOrNull()?.trim().orEmpty()
+        if (rawText.isBlank()) return null
+
+        val source = runCatching { JSONObject(rawText) }.getOrNull() ?: return null
+        val seq = source.optInt("seq", source.optInt("sq", -1))
+        if (seq < 0) return null
+
+        val normalized = JSONObject()
+        normalized.put("ts", source.optLong("timestamp", source.optLong("ts", System.currentTimeMillis())))
+        normalized.put("sq", seq)
+        normalized.put("ep", source.optInt("r_peak", source.optInt("ep", 0)))
+        normalized.put("qi_c", source.optInt("qi_c", source.optInt("qi", 0)))
+        normalized.put("cx", source.optInt("cx", 0))
+        normalized.put("cy", source.optInt("cy", 0))
+        normalized.put("cz", source.optInt("cz", 0))
+
+        when {
+            source.has("ecg") -> normalized.put("ecg", normalizeArrayValue(source.get("ecg")))
+            source.has("ecg_value") -> normalized.put("ecg", normalizeArrayValue(source.get("ecg_value")))
+        }
+        return normalized
+    }
+
+    private fun extractJsonValue(source: JSONObject, primaryKey: String, fallbackKey: String): Any? {
+        return when {
+            source.has(primaryKey) -> source.get(primaryKey)
+            source.has(fallbackKey) -> source.get(fallbackKey)
+            else -> null
+        }
+    }
+
+    private fun normalizeArrayValue(value: Any): Any {
+        return when (value) {
+            is JSONArray -> value
+            is Number -> JSONArray().put(value.toInt())
+            is String -> {
+                val trimmed = value.trim()
+                if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+                    runCatching { JSONArray(trimmed) }.getOrElse { JSONArray().put(trimmed.toIntOrNull() ?: 0) }
+                } else {
+                    JSONArray().put(trimmed.toIntOrNull() ?: 0)
+                }
+            }
+            else -> JSONArray().put(value.toString())
+        }
+    }
+
+    private fun mergeFrames(wrist: JSONObject, chest: JSONObject): String {
+        val merged = JSONObject(wrist.toString())
+        val chestSeq = chest.optInt("sq", wrist.optInt("sq", 0))
+        val wristQi = merged.optInt("qi_w", merged.optInt("qi", 0))
+        val chestQi = chest.optInt("qi_c", 0)
+
+        merged.put("cs", chestSeq)
+        merged.put("ep", chest.optInt("ep", 0))
+        merged.put("qi_c", chestQi)
+        merged.put("qi", if (wristQi == 1 && chestQi == 1) 1 else 0)
+        merged.put("cx", chest.optInt("cx", 0))
+        merged.put("cy", chest.optInt("cy", 0))
+        merged.put("cz", chest.optInt("cz", 0))
+        if (chest.has("ecg")) {
+            merged.put("ecg", chest.get("ecg"))
+        }
+        if (!merged.has("bt")) merged.put("bt", 100)
+        return merged.toString()
     }
 
     private suspend fun uploadFrame(rawFrame: String, device: BleDevice?) {
         val token = SessionStore.token.value
         if (token.isNullOrBlank()) {
-            incrementCounter("upload_failures")
+            uploadFailures += 1
             updateLastError("BLE frame received but there is no active session token.")
             return
         }
@@ -508,37 +949,24 @@ private object AndroidBleManager {
             onSuccess = { response ->
                 val body = response.body()
                 if (response.isSuccessful && body?.success == true) {
-                    LocalBleStateStore.updateDataStats { current ->
-                        current.toMutableMap().apply {
-                            put("frames_uploaded", ((current["frames_uploaded"] as? Number)?.toInt() ?: 0) + 1)
-                            put("buffer_fill", body.bufferFill ?: current["buffer_fill"] ?: "0/100")
-                            put("last_seq", body.seqNum)
-                            body.reading?.let { reading ->
-                                put("last_measurement", "${reading.systolic}/${reading.diastolic} • ${reading.heartRate} bpm")
-                            }
-                            body.reading?.model?.takeIf { it.isNotBlank() }?.let { model ->
-                                val measurement = current["last_measurement"]?.toString().orEmpty()
-                                if (measurement.isNotBlank()) {
-                                    put("last_measurement", "$measurement ($model)")
-                                }
-                            }
-                            if (body.readingCreated) {
-                                put("measurements_ready", ((current["measurements_ready"] as? Number)?.toInt() ?: 0) + 1)
-                            }
-                            remove("last_error")
-                        }
+                    framesUploaded += 1
+                    lastSeq = body.seqNum
+                    lastError = null
+                    body.reading?.let { reading ->
+                        lastMeasurement = "${reading.systolic}/${reading.diastolic} - ${reading.heartRate} bpm"
                     }
-
                     if (body.readingCreated) {
+                        measurementsReady += 1
                         ReadingRepository.syncFromApi()
                     }
+                    publishStatus()
                 } else {
-                    incrementCounter("upload_failures")
+                    uploadFailures += 1
                     updateLastError(body?.message ?: "BLE frame upload failed.")
                 }
             },
             onFailure = {
-                incrementCounter("upload_failures")
+                uploadFailures += 1
                 updateLastError(it.message ?: "BLE frame upload failed.")
             }
         )
@@ -546,35 +974,23 @@ private object AndroidBleManager {
 
     private suspend fun notifyMobileConnected() {
         val token = SessionStore.token.value ?: return
-
         runCatching {
             ApiClient.apiService.notifyMobileBleConnected("Bearer $token")
         }
     }
 
-    private fun updateStreamingState(streaming: Boolean) {
-        LocalBleStateStore.updateDataStats { current ->
-            current.toMutableMap().apply {
-                put("streaming", streaming)
-                remove("last_error")
-            }
-        }
+    private fun bothDevicesConnected(): Boolean {
+        return sessions.getValue(BleDeviceRole.WRIST).isConnected &&
+            sessions.getValue(BleDeviceRole.CHEST).isConnected
     }
 
-    private fun incrementCounter(key: String) {
-        LocalBleStateStore.updateDataStats { current ->
-            current.toMutableMap().apply {
-                put(key, ((current[key] as? Number)?.toInt() ?: 0) + 1)
-            }
-        }
+    private fun currentTimestamp(): String {
+        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(Date())
     }
 
     private fun updateLastError(message: String) {
-        LocalBleStateStore.updateDataStats { current ->
-            current.toMutableMap().apply {
-                put("last_error", message)
-            }
-        }
+        lastError = message
+        publishStatus()
     }
 }
 
@@ -584,13 +1000,10 @@ class BleRepository(context: Context? = null) {
     }
 
     fun resetForColdStart() {
-        // Drop any stale GATT/session state carried across process recreation so
-        // the user always starts from an explicit scan/connect action.
         AndroidBleManager.disconnect()
     }
 
     fun fetchBleStatus(): RepositoryResult<BLEStatusResponse> {
-        // BLE connection truth lives on the Android device; no backend status call is needed.
         return RepositoryResult.Success(AndroidBleManager.currentStatus())
     }
 
@@ -621,6 +1034,14 @@ class BleRepository(context: Context? = null) {
 
     suspend fun connectToDevice(context: Context, device: BleDevice): RepositoryResult<String> {
         return AndroidBleManager.connect(context, device)
+    }
+
+    suspend fun startMeasurement(): RepositoryResult<String> {
+        return AndroidBleManager.startMeasurement()
+    }
+
+    suspend fun stopMeasurement(): RepositoryResult<String> {
+        return AndroidBleManager.stopMeasurement()
     }
 
     fun disconnect() {

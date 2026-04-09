@@ -85,7 +85,14 @@ data class BLEStatusResponse(
     @SerializedName("device_name") val deviceName: String,
     @SerializedName("device_address") val deviceAddress: String?,
     @SerializedName("connected_at") val connectedAt: String?,
-    @SerializedName("data_stats") val dataStats: Map<String, Any>
+    @SerializedName("data_stats") val dataStats: Map<String, Any>,
+    @SerializedName("wrist_connected") val wristConnected: Boolean = false,
+    @SerializedName("chest_connected") val chestConnected: Boolean = false,
+    @SerializedName("wrist_device_name") val wristDeviceName: String? = null,
+    @SerializedName("wrist_device_address") val wristDeviceAddress: String? = null,
+    @SerializedName("chest_device_name") val chestDeviceName: String? = null,
+    @SerializedName("chest_device_address") val chestDeviceAddress: String? = null,
+    val streaming: Boolean = false
 )
 
 data class CommandResponse(val success: Boolean, val message: String)

@@ -23,7 +23,7 @@ data class DashboardUiState(
     val diastolic: String = "--",
     val pulse: String = "--",
     val spo2: String = "--",
-    val bleDeviceName: String = "BP Monitor Pro",
+    val bleDeviceName: String = "Wrist + Chest",
     val bleConnectedLabel: String = "Disconnected",
     val unreadNotificationCount: Int = 0,
     val isLoading: Boolean = false,
@@ -86,14 +86,23 @@ class DashboardViewModel(
 
             when (val bleResult = bleRepository.fetchBleStatus()) {
                 is RepositoryResult.Success -> {
+                    val bleStatus = bleResult.data
+                    val bleName = when {
+                        bleStatus.wristConnected && bleStatus.chestConnected -> "Wrist + Chest"
+                        bleStatus.wristConnected -> bleStatus.wristDeviceName ?: "Wrist"
+                        bleStatus.chestConnected -> bleStatus.chestDeviceName ?: "Chest"
+                        else -> "Wrist + Chest"
+                    }
+                    val bleLabel = when {
+                        bleStatus.streaming -> "Measuring"
+                        bleStatus.wristConnected && bleStatus.chestConnected -> "Ready"
+                        bleStatus.wristConnected || bleStatus.chestConnected -> "Partial"
+                        else -> "Disconnected"
+                    }
                     _uiState.update {
                         it.copy(
-                            bleDeviceName = bleResult.data.deviceName.ifBlank { "BP Monitor Pro" },
-                            bleConnectedLabel = if (bleResult.data.connected) {
-                                "Connected"
-                            } else {
-                                "Disconnected"
-                            }
+                            bleDeviceName = bleName,
+                            bleConnectedLabel = bleLabel
                         )
                     }
                 }

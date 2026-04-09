@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.repository.BleDevice
+import com.example.finalapp.data.repository.BleDeviceRole
 import com.example.finalapp.data.repository.BleRepository
 import com.example.finalapp.data.repository.RepositoryResult
 import com.example.finalapp.ui.localization.isTurkishSelected
@@ -19,15 +20,14 @@ data class BleUiState(
     val connecting: Boolean = false,
     val connected: Boolean = false,
     val streaming: Boolean = false,
-    val selectedDevice: BleDevice? = null,
+    val readyToStart: Boolean = false,
+    val wristConnected: Boolean = false,
+    val chestConnected: Boolean = false,
+    val wristDevice: BleDevice? = null,
+    val chestDevice: BleDevice? = null,
     val devices: List<BleDevice> = emptyList(),
     val statusTitle: String = "",
     val statusSubtitle: String = "",
-    val framesReceived: Int = 0,
-    val framesUploaded: Int = 0,
-    val bufferFill: String = "0/25",
-    val measurementsReady: Int = 0,
-    val lastMeasurement: String? = null,
     val activeModelLabel: String = "Checking...",
     val modelMessage: String? = null,
     val errorMessage: String? = null
@@ -35,6 +35,7 @@ data class BleUiState(
 
 class BleViewModel(application: Application) : AndroidViewModel(application) {
     private val bleRepository = BleRepository(application)
+    private var autoStartIssued = false
 
     private fun t(english: String, turkish: String): String {
         return if (isTurkishSelected()) turkish else english
@@ -42,8 +43,8 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(
         BleUiState(
-            statusTitle = t("Device Disconnected", "Cihaz Bağlı Değil"),
-            statusSubtitle = t("Ensure your device is turned on", "Cihazınızın açık olduğundan emin olun")
+            statusTitle = t("Devices Disconnected", "Cihazlar Bagli Degil"),
+            statusSubtitle = t("Connect Wrist and Chest modules", "Wrist ve Chest modullerini bagla")
         )
     )
     val uiState: StateFlow<BleUiState> = _uiState.asStateFlow()
@@ -57,14 +58,8 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
         when (val result = bleRepository.fetchBleStatus()) {
             is RepositoryResult.Success -> {
                 val status = result.data
-                val dataStats = status.dataStats
-                val streaming = dataStats["streaming"] as? Boolean ?: false
-                val framesReceived = (dataStats["frames_received"] as? Number)?.toInt() ?: 0
-                val framesUploaded = (dataStats["frames_uploaded"] as? Number)?.toInt() ?: 0
-                val bufferFill = dataStats["buffer_fill"]?.toString() ?: "0/100"
-                val measurementsReady = (dataStats["measurements_ready"] as? Number)?.toInt() ?: 0
-                val lastMeasurement = dataStats["last_measurement"]?.toString()
-                val backendError = dataStats["last_error"]?.toString()
+                val readyToStart = status.wristConnected && status.chestConnected
+                val streaming = status.streaming || ((status.dataStats["streaming"] as? Boolean) ?: false)
 
                 _uiState.update {
                     it.copy(
@@ -72,51 +67,54 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                         connecting = false,
                         connected = status.connected,
                         streaming = streaming,
-                        selectedDevice = if (status.connected && status.deviceName.isNotBlank()) {
-                            BleDevice(
-                                name = status.deviceName,
-                                address = status.deviceAddress.orEmpty()
-                            )
-                        } else {
-                            null
+                        readyToStart = readyToStart,
+                        wristConnected = status.wristConnected,
+                        chestConnected = status.chestConnected,
+                        wristDevice = status.wristDeviceName?.let { name ->
+                            BleDevice(name = name, address = status.wristDeviceAddress.orEmpty(), role = BleDeviceRole.WRIST)
+                        },
+                        chestDevice = status.chestDeviceName?.let { name ->
+                            BleDevice(name = name, address = status.chestDeviceAddress.orEmpty(), role = BleDeviceRole.CHEST)
                         },
                         statusTitle = when {
-                            !status.available -> t("Bluetooth Unavailable", "Bluetooth Kullanılamıyor")
-                            status.connected && streaming -> t(
-                                "Streaming from ${status.deviceName}",
-                                "${status.deviceName} cihazından veri alınıyor"
-                            )
-                            status.connected -> t(
-                                "Connected to ${status.deviceName}",
-                                "${status.deviceName} cihazına bağlandı"
-                            )
-                            else -> t("Device Disconnected", "Cihaz Bağlı Değil")
+                            !status.available -> t("Bluetooth Unavailable", "Bluetooth Kullanilamiyor")
+                            streaming -> t("Measurement Started", "Olcum Basladi")
+                            readyToStart -> t("Both Devices Connected", "Iki Cihaz Bagli")
+                            status.wristConnected || status.chestConnected -> t("Connect the Other Device", "Diger Cihazi Bagla")
+                            else -> t("Devices Disconnected", "Cihazlar Bagli Degil")
                         },
                         statusSubtitle = when {
                             !status.available -> t(
-                                "Turn on Bluetooth to scan for devices",
-                                "Cihazları taramak için Bluetooth'u aç"
+                                "Turn on Bluetooth to continue",
+                                "Devam etmek icin Bluetooth'u ac"
                             )
-                            status.connected && streaming -> t(
-                                "Frames: $framesReceived | Uploaded: $framesUploaded",
-                                "Alınan kare: $framesReceived | Gönderilen: $framesUploaded"
+                            streaming -> t(
+                                "Wrist and Chest are streaming together",
+                                "Wrist ve Chest birlikte veri gonderiyor"
                             )
-                            status.connected -> t(
-                                "Configuring notifications and sync",
-                                "Bildirim ve senkronizasyon ayarlanıyor"
+                            readyToStart -> t(
+                                "Measurement will start automatically",
+                                "Olcum otomatik olarak baslayacak"
+                            )
+                            status.wristConnected || status.chestConnected -> t(
+                                "One device is ready, now connect the other one",
+                                "Bir cihaz hazir, simdi digerini bagla"
                             )
                             else -> t(
-                                "Ensure your device is turned on",
-                                "Cihazınızın açık olduğundan emin olun"
+                                "Use the Wrist and Chest buttons below",
+                                "Asagidaki Wrist ve Chest tuslarini kullan"
                             )
                         },
-                        framesReceived = framesReceived,
-                        framesUploaded = framesUploaded,
-                        bufferFill = bufferFill,
-                        measurementsReady = measurementsReady,
-                        lastMeasurement = lastMeasurement,
-                        errorMessage = backendError
+                        errorMessage = status.dataStats["last_error"]?.toString()
                     )
+                }
+
+                when {
+                    !readyToStart -> autoStartIssued = false
+                    readyToStart && !streaming && !autoStartIssued -> {
+                        autoStartIssued = true
+                        startMeasurementInternal()
+                    }
                 }
             }
 
@@ -132,12 +130,11 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(
                     scanning = true,
                     connecting = false,
-                    devices = emptyList(),
                     errorMessage = null,
-                    statusTitle = t("Scanning for Devices...", "Cihazlar Taranıyor..."),
+                    statusTitle = t("Scanning for Devices...", "Cihazlar Taraniyor..."),
                     statusSubtitle = t(
-                        "Looking for nearby BLE devices",
-                        "Yakın BLE cihazları aranıyor"
+                        "Looking for Wrist and Chest modules",
+                        "Wrist ve Chest modulleri araniyor"
                     )
                 )
             }
@@ -148,14 +145,10 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                         it.copy(
                             scanning = false,
                             devices = result.data,
-                            statusTitle = t("Device Disconnected", "Cihaz Bağlı Değil"),
-                            statusSubtitle = t(
-                                "Choose a device to connect",
-                                "Bağlanmak için bir cihaz seç"
-                            ),
                             errorMessage = null
                         )
                     }
+                    refreshStatus()
                 }
 
                 is RepositoryResult.Error -> {
@@ -164,10 +157,10 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                             scanning = false,
                             devices = emptyList(),
                             errorMessage = result.message,
-                            statusTitle = t("Device Disconnected", "Cihaz Bağlı Değil"),
+                            statusTitle = t("Scan Failed", "Tarama Basarisiz"),
                             statusSubtitle = t(
-                                "Ensure your device is turned on",
-                                "Cihazınızın açık olduğundan emin olun"
+                                "Make sure Bluetooth and both devices are on",
+                                "Bluetooth ve iki cihazin da acik oldugundan emin ol"
                             )
                         )
                     }
@@ -176,40 +169,24 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun connectToDevice(device: BleDevice) {
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    connecting = true,
-                    errorMessage = null,
-                    statusTitle = t(
-                        "Connecting to ${device.name}",
-                        "${device.name} cihazına bağlanılıyor"
-                    ),
-                    statusSubtitle = device.address
-                )
-            }
+    fun connectWrist() {
+        connectByRole(BleDeviceRole.WRIST)
+    }
 
-            when (val result = bleRepository.connectToDevice(getApplication(), device)) {
+    fun connectChest() {
+        connectByRole(BleDeviceRole.CHEST)
+    }
+
+    fun stopMeasurement() {
+        viewModelScope.launch {
+            when (val result = bleRepository.stopMeasurement()) {
                 is RepositoryResult.Success -> {
+                    _uiState.update { it.copy(errorMessage = null) }
                     refreshStatus()
-                    refreshModelInfo()
                 }
 
                 is RepositoryResult.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            connecting = false,
-                            connected = false,
-                            selectedDevice = null,
-                            errorMessage = result.message,
-                            statusTitle = t("Connection Failed", "Bağlantı Başarısız"),
-                            statusSubtitle = t(
-                                "Choose a device to connect",
-                                "Bağlanmak için bir cihaz seç"
-                            )
-                        )
-                    }
+                    _uiState.update { it.copy(errorMessage = result.message) }
                 }
             }
         }
@@ -222,20 +199,134 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                 connecting = false,
                 errorMessage = t(
                     "Bluetooth permission is required to scan and connect.",
-                    "Tarama ve bağlantı için Bluetooth izni gereklidir."
+                    "Tarama ve baglanti icin Bluetooth izni gereklidir."
                 ),
-                statusTitle = t("Permission Required", "İzin Gerekli"),
+                statusTitle = t("Permission Required", "Izin Gerekli"),
                 statusSubtitle = t(
                     "Allow Bluetooth access to continue",
-                    "Devam etmek için Bluetooth erişimine izin ver"
+                    "Devam etmek icin Bluetooth erisimine izin ver"
                 )
             )
         }
     }
 
     fun disconnect() {
+        autoStartIssued = false
         bleRepository.disconnect()
         refreshStatus()
+    }
+
+    private fun connectByRole(role: BleDeviceRole) {
+        viewModelScope.launch {
+            val existing = _uiState.value.devices.firstOrNull { it.role == role }
+            val device = existing ?: scanForRole(role)
+
+            if (device == null) {
+                _uiState.update {
+                    it.copy(
+                        errorMessage = when (role) {
+                            BleDeviceRole.WRIST -> t("No Wrist device was found.", "Wrist cihazi bulunamadi.")
+                            BleDeviceRole.CHEST -> t("No Chest device was found.", "Chest cihazi bulunamadi.")
+                            BleDeviceRole.UNKNOWN -> t("No device was found.", "Cihaz bulunamadi.")
+                        }
+                    )
+                }
+                return@launch
+            }
+
+            connectToResolvedDevice(device)
+        }
+    }
+
+    private suspend fun scanForRole(role: BleDeviceRole): BleDevice? {
+        _uiState.update {
+            it.copy(
+                scanning = true,
+                connecting = false,
+                errorMessage = null,
+                statusTitle = when (role) {
+                    BleDeviceRole.WRIST -> t("Scanning for Wrist...", "Wrist Araniyor...")
+                    BleDeviceRole.CHEST -> t("Scanning for Chest...", "Chest Araniyor...")
+                    BleDeviceRole.UNKNOWN -> t("Scanning for Devices...", "Cihazlar Taraniyor...")
+                },
+                statusSubtitle = t("Searching nearby BLE devices", "Yakindaki BLE cihazlari aranıyor")
+            )
+        }
+
+        return when (val result = bleRepository.scanBleDevices(getApplication())) {
+            is RepositoryResult.Success -> {
+                _uiState.update {
+                    it.copy(
+                        scanning = false,
+                        devices = result.data,
+                        errorMessage = null
+                    )
+                }
+                result.data.firstOrNull { it.role == role }
+            }
+
+            is RepositoryResult.Error -> {
+                _uiState.update {
+                    it.copy(
+                        scanning = false,
+                        devices = emptyList(),
+                        errorMessage = result.message
+                    )
+                }
+                null
+            }
+        }
+    }
+
+    private suspend fun connectToResolvedDevice(device: BleDevice) {
+        _uiState.update {
+            it.copy(
+                connecting = true,
+                errorMessage = null,
+                statusTitle = t(
+                    "Connecting to ${device.name}",
+                    "${device.name} cihazina baglaniliyor"
+                ),
+                statusSubtitle = device.address
+            )
+        }
+
+        when (val result = bleRepository.connectToDevice(getApplication(), device)) {
+            is RepositoryResult.Success -> {
+                _uiState.update { it.copy(errorMessage = null) }
+                refreshStatus()
+                refreshModelInfo()
+            }
+
+            is RepositoryResult.Error -> {
+                _uiState.update {
+                    it.copy(
+                        connecting = false,
+                        errorMessage = result.message,
+                        statusTitle = t("Connection Failed", "Baglanti Basarisiz"),
+                        statusSubtitle = t(
+                            "Make sure the device is nearby and powered on",
+                            "Cihazin yakin ve acik oldugundan emin ol"
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    private fun startMeasurementInternal() {
+        viewModelScope.launch {
+            when (val result = bleRepository.startMeasurement()) {
+                is RepositoryResult.Success -> {
+                    _uiState.update { it.copy(errorMessage = null) }
+                    refreshStatus()
+                }
+
+                is RepositoryResult.Error -> {
+                    _uiState.update { it.copy(errorMessage = result.message) }
+                }
+            }
+        }
     }
 
     private fun refreshModelInfo() {
