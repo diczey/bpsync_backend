@@ -27,6 +27,7 @@ ECG_SAMPLE_INTERVAL_MS = 4.0
 WAVEFORM_TARGET_SAMPLES = 250
 MIN_QUALITY_RATIO = 0.6
 DB_SYNC_TOLERANCE_MS = 120
+DB_SYNC_RECEIVED_AT_TOLERANCE_MS = 250
 DB_SYNC_FETCH_LIMIT = 220
 DB_SYNC_MISSING_SEQ_PENALTY = 10_000
 
@@ -148,8 +149,10 @@ class DataManager:
             )
 
         try:
-            frame = BLEFrame.model_validate(self._normalize_wrist_partial_payload(json_str))
-            frame.received_at_ms = int(time.time() * 1000)
+            normalized_payload = self._normalize_wrist_partial_payload(json_str)
+            mobile_received_at_ms = self._extract_optional_ms(normalized_payload.get("mobile_ts"))
+            frame = BLEFrame.model_validate(normalized_payload)
+            frame.received_at_ms = mobile_received_at_ms or int(time.time() * 1000)
         except Exception as exc:
             self._frames_failed += 1
             logger.warning("Wrist frame parse error: %s", exc)
@@ -205,7 +208,7 @@ class DataManager:
 
         try:
             payload = self._normalize_chest_partial_payload(json_str)
-            received_at_ms = int(time.time() * 1000)
+            received_at_ms = self._extract_optional_ms(payload.get("mobile_ts")) or int(time.time() * 1000)
         except Exception as exc:
             self._frames_failed += 1
             logger.warning("Chest frame parse error: %s", exc)
@@ -356,6 +359,16 @@ class DataManager:
             return default
         return 1 if numeric else 0
 
+    @staticmethod
+    def _extract_optional_ms(value: Any) -> Optional[int]:
+        if value is None:
+            return None
+        try:
+            ms = int(value)
+        except (TypeError, ValueError):
+            return None
+        return ms if ms > 0 else None
+
     def _normalize_frame_payload(self, raw_payload: str | dict[str, Any]) -> dict[str, Any]:
         data = json.loads(raw_payload) if isinstance(raw_payload, str) else dict(raw_payload)
         if not isinstance(data, dict):
@@ -418,6 +431,7 @@ class DataManager:
                 device_timestamp_ms = int(timestamp_value)
             except (TypeError, ValueError):
                 device_timestamp_ms = None
+        mobile_timestamp_ms = self._extract_optional_ms(data.get("mobile_ts"))
 
         ecg_values = [int(round(value)) for value in self._decode_numeric_series(data.get("ecg", data.get("ecg_value")))]
         if not ecg_values:
@@ -426,6 +440,7 @@ class DataManager:
         return {
             "sq": seq_num,
             "ts": device_timestamp_ms,
+            "mobile_ts": mobile_timestamp_ms,
             "ep": self._coerce_flag(data.get("ep", data.get("r_peak", 0))),
             "qi_c": self._coerce_flag(data.get("qi_c", data.get("qi", 0))),
             "ecg": ecg_values,
@@ -742,6 +757,7 @@ class DataManager:
 
         where_clauses = ["user_id = :user_id"]
         params: dict[str, Any] = {"user_id": user_id, "row_limit": DB_SYNC_FETCH_LIMIT}
+        order_by = "time DESC" if after_received_at_ms <= 0 else "time ASC"
         if "received_at_ms" in wrist_columns and after_received_at_ms > 0:
             where_clauses.append("received_at_ms > :after_ms")
             params["after_ms"] = after_received_at_ms
@@ -752,7 +768,7 @@ class DataManager:
                 SELECT {", ".join(select_cols)}
                 FROM wristband_data
                 WHERE {" AND ".join(where_clauses)}
-                ORDER BY time ASC
+                ORDER BY {order_by}
                 LIMIT :row_limit
                 """
             ),
@@ -813,7 +829,10 @@ class DataManager:
             where_clauses.append("received_at_ms > :after_ms")
             params["after_ms"] = after_received_at_ms
 
-        order_by = "time ASC, sample_index ASC" if "sample_index" in ecg_columns else "time ASC"
+        if after_received_at_ms <= 0:
+            order_by = "time DESC, sample_index DESC" if "sample_index" in ecg_columns else "time DESC"
+        else:
+            order_by = "time ASC, sample_index ASC" if "sample_index" in ecg_columns else "time ASC"
         rows = db.execute(
             text(
                 f"""
@@ -878,12 +897,12 @@ class DataManager:
         return abs(wrist_seq - chest_seq)
 
     @staticmethod
-    def _pair_timestamps_ms(wrist_row: dict[str, Any], chest_row: dict[str, Any]) -> tuple[int, int, int]:
+    def _pair_timestamps_ms(wrist_row: dict[str, Any], chest_row: dict[str, Any]) -> tuple[int, int, int, int]:
         wrist_device_ts = wrist_row.get("device_timestamp_ms")
         chest_device_ts = chest_row.get("device_timestamp_ms")
         if wrist_device_ts is not None and chest_device_ts is not None:
-            return int(wrist_device_ts), int(chest_device_ts), 0
-        return int(wrist_row["received_at_ms"]), int(chest_row["received_at_ms"]), 1
+            return int(wrist_device_ts), int(chest_device_ts), 0, DB_SYNC_TOLERANCE_MS
+        return int(wrist_row["received_at_ms"]), int(chest_row["received_at_ms"]), 1, DB_SYNC_RECEIVED_AT_TOLERANCE_MS
 
     @classmethod
     def _match_rows_by_timestamp(cls, wrist_rows: list[dict[str, Any]], chest_rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
@@ -898,9 +917,9 @@ class DataManager:
 
             for idx in range(chest_index, len(chest_rows)):
                 chest_row = chest_rows[idx]
-                wrist_ts, chest_ts, clock_priority = cls._pair_timestamps_ms(wrist, chest_row)
+                wrist_ts, chest_ts, clock_priority, tolerance_ms = cls._pair_timestamps_ms(wrist, chest_row)
                 delta = abs(chest_ts - wrist_ts)
-                if delta > DB_SYNC_TOLERANCE_MS:
+                if delta > tolerance_ms:
                     continue
 
                 seq_delta = cls._row_seq_distance(wrist, chest_row)

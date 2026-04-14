@@ -770,6 +770,7 @@ private object AndroidBleManager {
             updateLastError("Wrist frame could not be parsed.")
             return
         }
+        normalized.put("mobile_ts", System.currentTimeMillis())
 
         lastSeq = normalized.optInt("sq", lastSeq)
 
@@ -796,6 +797,7 @@ private object AndroidBleManager {
             updateLastError("Chest frame could not be parsed.")
             return
         }
+        normalized.put("mobile_ts", System.currentTimeMillis())
 
         lastSeq = normalized.optInt("sq", lastSeq)
 
