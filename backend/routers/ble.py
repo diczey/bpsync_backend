@@ -15,16 +15,21 @@ import asyncio
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from backend.database import SensorSessionLocal, get_db
+from backend.database import SensorSessionLocal, get_db, get_sensor_db
 from backend.models.user import User
 from backend.utils.security import get_current_user
-from backend.utils.sensor_identity import canonical_sensor_user_key
+from backend.utils.sensor_identity import (
+    canonical_sensor_user_key,
+    sensor_user_clause,
+    sensor_user_params,
+)
 from ble.data_manager import (
     DataManager,
     WAVEFORM_WINDOW_FRAMES,
@@ -111,6 +116,16 @@ class MobileSessionStatusResponse(BaseModel):
     measurement_started_at: Optional[int] = None
     measurement_stopped_at: Optional[int] = None
     data_stats: dict = {}
+    message: Optional[str] = None
+
+
+class RawTimescaleDebugResponse(BaseModel):
+    success: bool
+    sensor_owner_key: str
+    wrist_total_rows: int = 0
+    ecg_total_rows: int = 0
+    wrist_rows: list[dict[str, Any]] = []
+    ecg_rows: list[dict[str, Any]] = []
     message: Optional[str] = None
 
 
@@ -440,6 +455,16 @@ def _dt_to_ms(value: Optional[datetime]) -> Optional[int]:
     return int(value.timestamp() * 1000)
 
 
+def _row_to_dict(row) -> dict[str, Any]:
+    serialized: dict[str, Any] = {}
+    for key, value in row._mapping.items():
+        if isinstance(value, datetime):
+            serialized[key] = int(value.timestamp() * 1000)
+        else:
+            serialized[key] = value
+    return serialized
+
+
 def ensure_ble_calibration_started(
     current_user: User,
     db: Session,
@@ -616,6 +641,119 @@ async def get_mobile_session_status(
     return mobile_session_tracker.snapshot(
         sensor_owner_key,
         data_stats=data_manager.get_stats(sensor_owner_key),
+    )
+
+
+@router.get(
+    "/mobile/raw/recent",
+    response_model=RawTimescaleDebugResponse,
+    summary="Inspect recent raw Timescale rows (debug-only)",
+)
+async def get_recent_mobile_raw_rows(
+    wrist_limit: int = Query(10, ge=1, le=100),
+    ecg_limit: int = Query(25, ge=1, le=250),
+    current_user: User = Depends(get_current_user),
+    sensor_db: Session = Depends(get_sensor_db),
+):
+    """
+    Return the latest raw Timescale rows written for the authenticated user.
+
+    This is meant for lab/debug verification so we can confirm the mobile BLE
+    pipeline is persisting wristband_data and ecg_data rows in TimescaleDB.
+    """
+    params = sensor_user_params(current_user)
+    sensor_owner_key = canonical_sensor_user_key(current_user)
+
+    wrist_total = sensor_db.execute(
+        text(f"""
+            SELECT COUNT(*) AS total
+            FROM wristband_data
+            WHERE {sensor_user_clause()}
+        """),
+        params,
+    ).scalar() or 0
+
+    ecg_total = sensor_db.execute(
+        text(f"""
+            SELECT COUNT(*) AS total
+            FROM ecg_data
+            WHERE {sensor_user_clause()}
+        """),
+        params,
+    ).scalar() or 0
+
+    wrist_rows = sensor_db.execute(
+        text(f"""
+            SELECT
+                time,
+                user_id,
+                device_timestamp_ms,
+                received_at_ms,
+                frame_seq,
+                chest_seq,
+                frame_mode,
+                ppg_ir,
+                ppg_red,
+                ppg_ir_batch,
+                ppg_red_batch,
+                ax,
+                ay,
+                az,
+                gx,
+                gy,
+                gz,
+                temperature,
+                ep,
+                qi_w,
+                qi_c,
+                qi,
+                battery
+            FROM wristband_data
+            WHERE {sensor_user_clause()}
+            ORDER BY time DESC
+            LIMIT :wrist_limit
+        """),
+        {
+            **params,
+            "wrist_limit": wrist_limit,
+        },
+    ).fetchall()
+
+    ecg_rows = sensor_db.execute(
+        text(f"""
+            SELECT
+                time,
+                user_id,
+                device_timestamp_ms,
+                received_at_ms,
+                frame_seq,
+                sample_index,
+                ecg_value,
+                ep,
+                qi_c
+            FROM ecg_data
+            WHERE {sensor_user_clause()}
+            ORDER BY time DESC
+            LIMIT :ecg_limit
+        """),
+        {
+            **params,
+            "ecg_limit": ecg_limit,
+        },
+    ).fetchall()
+
+    message = None
+    if wrist_total == 0 and ecg_total == 0:
+        message = "No raw Timescale rows found yet for this user."
+
+    return RawTimescaleDebugResponse(
+        success=True,
+        sensor_owner_key=sensor_owner_key,
+        wrist_total_rows=int(wrist_total),
+        ecg_total_rows=int(ecg_total),
+        wrist_rows=[_row_to_dict(row) for row in wrist_rows],
+        ecg_rows=[_row_to_dict(row) for row in ecg_rows],
+        message=message,
     )
 
 

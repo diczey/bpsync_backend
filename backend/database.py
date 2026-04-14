@@ -53,8 +53,6 @@ def create_sensor_tables():
         SELECT create_hypertable('wristband_data', 'time', if_not_exists => TRUE);
         CREATE INDEX IF NOT EXISTS idx_wristband_user_time
             ON wristband_data (user_id, time DESC);
-        CREATE INDEX IF NOT EXISTS idx_wristband_user_seq
-            ON wristband_data (user_id, frame_seq DESC);
 
         CREATE TABLE IF NOT EXISTS ecg_data (
             time      TIMESTAMPTZ NOT NULL,
@@ -70,8 +68,6 @@ def create_sensor_tables():
         SELECT create_hypertable('ecg_data', 'time', if_not_exists => TRUE);
         CREATE INDEX IF NOT EXISTS idx_ecg_user_time
             ON ecg_data (user_id, time DESC);
-        CREATE INDEX IF NOT EXISTS idx_ecg_user_seq
-            ON ecg_data (user_id, frame_seq DESC);
 
         CREATE TABLE IF NOT EXISTS bp_readings (
             time       TIMESTAMPTZ  NOT NULL,
