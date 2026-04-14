@@ -26,6 +26,9 @@ WAVEFORM_FRAME_INTERVAL_MS = 40.0
 ECG_SAMPLE_INTERVAL_MS = 4.0
 WAVEFORM_TARGET_SAMPLES = 250
 MIN_QUALITY_RATIO = 0.6
+DB_SYNC_TOLERANCE_MS = 120
+DB_SYNC_FETCH_LIMIT = 220
+DB_SYNC_MISSING_SEQ_PENALTY = 10_000
 
 
 @dataclass
@@ -34,6 +37,9 @@ class UserStreamState:
     mode: str = "legacy"
     bp_inferences: int = 0
     last_inferred_reading: Optional[InferredReading] = None
+    db_buffer_fill: str = f"0/{WAVEFORM_WINDOW_FRAMES}"
+    last_synced_wrist_received_at_ms: int = 0
+    last_synced_chest_received_at_ms: int = 0
 
 
 _data_manager_instance: Optional["DataManager"] = None
@@ -130,6 +136,118 @@ class DataManager:
                 reading=inferred,
             )
 
+    async def process_wrist_frame(self, json_str, user_id=None):
+        uid = user_id or self._default_user_id
+        if not uid:
+            self._frames_failed += 1
+            return FrameProcessResult(
+                success=False,
+                seq_num=0,
+                quality=0.0,
+                message="Missing user_id for wrist frame processing.",
+            )
+
+        try:
+            frame = BLEFrame.model_validate(self._normalize_wrist_partial_payload(json_str))
+            frame.received_at_ms = int(time.time() * 1000)
+        except Exception as exc:
+            self._frames_failed += 1
+            logger.warning("Wrist frame parse error: %s", exc)
+            return FrameProcessResult(
+                success=False,
+                seq_num=0,
+                quality=0.0,
+                message=f"Parse error: {exc}",
+            )
+
+        state = self._state_for_user(uid)
+        lock = self._lock_for_user(uid)
+        async with lock:
+            db = self._db_factory()
+            try:
+                self._insert_wrist_raw(db, frame, uid)
+                db.commit()
+                self._frames_processed += 1
+            except Exception as exc:
+                db.rollback()
+                self._frames_failed += 1
+                logger.error("Wrist raw DB error (user=%s seq=%d): %s", uid, frame.sq, exc)
+                return FrameProcessResult(
+                    success=False,
+                    seq_num=frame.sq,
+                    quality=frame.quality_percent,
+                    message=f"DB error: {exc}",
+                )
+            finally:
+                db.close()
+
+            inferred, buffer_fill = await self._attempt_db_synced_inference(uid, state)
+            return FrameProcessResult(
+                success=True,
+                seq_num=frame.sq,
+                quality=frame.quality_percent,
+                buffer_fill=buffer_fill,
+                reading_created=inferred is not None,
+                reading=inferred,
+                message="Wrist frame stored to Timescale.",
+            )
+
+    async def process_chest_frame(self, json_str, user_id=None):
+        uid = user_id or self._default_user_id
+        if not uid:
+            self._frames_failed += 1
+            return FrameProcessResult(
+                success=False,
+                seq_num=0,
+                quality=0.0,
+                message="Missing user_id for chest frame processing.",
+            )
+
+        try:
+            payload = self._normalize_chest_partial_payload(json_str)
+            received_at_ms = int(time.time() * 1000)
+        except Exception as exc:
+            self._frames_failed += 1
+            logger.warning("Chest frame parse error: %s", exc)
+            return FrameProcessResult(
+                success=False,
+                seq_num=0,
+                quality=0.0,
+                message=f"Parse error: {exc}",
+            )
+
+        state = self._state_for_user(uid)
+        lock = self._lock_for_user(uid)
+        async with lock:
+            db = self._db_factory()
+            try:
+                self._insert_chest_raw(db, payload, uid, received_at_ms)
+                db.commit()
+                self._frames_processed += 1
+            except Exception as exc:
+                db.rollback()
+                self._frames_failed += 1
+                logger.error("Chest raw DB error (user=%s seq=%d): %s", uid, payload["sq"], exc)
+                return FrameProcessResult(
+                    success=False,
+                    seq_num=payload["sq"],
+                    quality=float(payload["qi_c"] * 100),
+                    message=f"DB error: {exc}",
+                )
+            finally:
+                db.close()
+
+            inferred, buffer_fill = await self._attempt_db_synced_inference(uid, state)
+            return FrameProcessResult(
+                success=True,
+                seq_num=payload["sq"],
+                quality=float(payload["qi_c"] * 100),
+                buffer_fill=buffer_fill,
+                reading_created=inferred is not None,
+                reading=inferred,
+                message="Chest frame stored to Timescale.",
+            )
+
     def set_user_id(self, user_id):
         self._default_user_id = user_id
         logger.info("DataManager: active sensor owner key=%s", user_id)
@@ -155,6 +273,9 @@ class DataManager:
 
         state.window = deque(maxlen=self._window_target_for_mode("legacy"))
         state.mode = "legacy"
+        state.db_buffer_fill = f"0/{WAVEFORM_WINDOW_FRAMES}"
+        state.last_synced_wrist_received_at_ms = 0
+        state.last_synced_chest_received_at_ms = 0
         logger.info("DataManager stream reset for %s", user_id)
 
     def get_stats(self, user_id: Optional[str] = None):
@@ -167,7 +288,11 @@ class DataManager:
                 "total": self._frames_processed + self._frames_failed,
                 "success_rate": self._success_rate(),
                 "bp_inferences": state.bp_inferences if state else 0,
-                "buffer_fill": f"{len(state.window)}/{target}" if state else f"0/{WINDOW_SIZE}",
+                "buffer_fill": (
+                    state.db_buffer_fill
+                    if state and state.mode == "waveform"
+                    else f"{len(state.window)}/{target}" if state else f"0/{WINDOW_SIZE}"
+                ),
                 "stream_mode": state.mode if state else "legacy",
             }
 
@@ -263,6 +388,48 @@ class DataManager:
             normalized[key] = int(normalized.get(key, 0) or 0)
 
         return normalized
+
+    def _normalize_wrist_partial_payload(self, raw_payload: str | dict[str, Any]) -> dict[str, Any]:
+        normalized = self._normalize_frame_payload(raw_payload)
+        normalized["ep"] = 0
+        normalized["qi_c"] = 0
+        normalized["qi"] = self._coerce_flag(normalized.get("qi_w", normalized.get("qi", 0)))
+        normalized["ecg"] = []
+        normalized["cs"] = int(normalized.get("cs", normalized.get("sq", -1)) or -1)
+        return normalized
+
+    def _normalize_chest_partial_payload(self, raw_payload: str | dict[str, Any]) -> dict[str, Any]:
+        data = json.loads(raw_payload) if isinstance(raw_payload, str) else dict(raw_payload)
+        if not isinstance(data, dict):
+            raise ValueError("Chest frame payload must be a JSON object.")
+
+        seq_value = data.get("sq", data.get("seq", -1))
+        try:
+            seq_num = int(seq_value)
+        except (TypeError, ValueError):
+            seq_num = -1
+        if seq_num < 0:
+            raise ValueError("Chest frame must include a valid sq/seq number.")
+
+        timestamp_value = data.get("ts", data.get("timestamp"))
+        device_timestamp_ms: Optional[int] = None
+        if timestamp_value is not None:
+            try:
+                device_timestamp_ms = int(timestamp_value)
+            except (TypeError, ValueError):
+                device_timestamp_ms = None
+
+        ecg_values = [int(round(value)) for value in self._decode_numeric_series(data.get("ecg", data.get("ecg_value")))]
+        if not ecg_values:
+            raise ValueError("Chest frame is missing ECG batch values.")
+
+        return {
+            "sq": seq_num,
+            "ts": device_timestamp_ms,
+            "ep": self._coerce_flag(data.get("ep", data.get("r_peak", 0))),
+            "qi_c": self._coerce_flag(data.get("qi_c", data.get("qi", 0))),
+            "ecg": ecg_values,
+        }
 
     def _get_table_columns(self, db, table_name: str) -> set[str]:
         cached = self._sensor_table_columns.get(table_name)
@@ -423,6 +590,81 @@ class DataManager:
             ppg_ir=ppg_ir_resampled,
         )
 
+    @staticmethod
+    def _to_utc_datetime_from_ms(value: int) -> datetime:
+        return datetime.fromtimestamp(value / 1000.0, tz=timezone.utc)
+
+    def _insert_wrist_raw(self, db, frame: BLEFrame, user_id: str) -> None:
+        received_at = self._to_utc_datetime_from_ms(frame.received_at_ms or int(time.time() * 1000))
+        self._dynamic_insert(
+            db,
+            "wristband_data",
+            {
+                "time": received_at,
+                "user_id": user_id,
+                "device_timestamp_ms": frame.ts,
+                "received_at_ms": frame.received_at_ms,
+                "frame_seq": frame.sq,
+                "chest_seq": frame.cs,
+                "frame_mode": "waveform",
+                "ppg_ir": frame.ppg_ir_latest,
+                "ppg_red": frame.ppg_red_latest,
+                "ppg_ir_batch": json.dumps(frame.ppg_ir_batch),
+                "ppg_red_batch": json.dumps(frame.ppg_red_batch),
+                "ax": frame.ax,
+                "ay": frame.ay,
+                "az": frame.az,
+                "gx": frame.gx,
+                "gy": frame.gy,
+                "gz": frame.gz,
+                "temperature": frame.tp,
+                "ep": 0,
+                "qi_w": frame.qi_w,
+                "qi_c": 0,
+                "qi": frame.qi_w,
+                "battery": frame.bt,
+            },
+            jsonb_columns={"ppg_ir_batch", "ppg_red_batch"},
+        )
+
+    def _insert_chest_raw(self, db, payload: dict[str, Any], user_id: str, received_at_ms: int) -> None:
+        ecg_batch = [float(value) for value in payload.get("ecg", [])]
+        if not ecg_batch:
+            return
+
+        received_at = self._to_utc_datetime_from_ms(received_at_ms)
+        start_at = received_at - timedelta(milliseconds=ECG_SAMPLE_INTERVAL_MS * (len(ecg_batch) - 1))
+        available_columns = self._get_table_columns(db, "ecg_data")
+        rows = []
+
+        for index, value in enumerate(ecg_batch):
+            row = {
+                "time": start_at + timedelta(milliseconds=ECG_SAMPLE_INTERVAL_MS * index),
+                "user_id": user_id,
+                "device_timestamp_ms": payload.get("ts"),
+                "received_at_ms": received_at_ms,
+                "frame_seq": payload["sq"],
+                "sample_index": index,
+                "ecg_value": float(value),
+                "ep": payload.get("ep", 0),
+                "qi_c": payload.get("qi_c", 0),
+            }
+            rows.append({key: val for key, val in row.items() if key in available_columns})
+
+        if not rows:
+            return
+
+        column_names = list(rows[0].keys())
+        db.execute(
+            text(
+                f"""
+                INSERT INTO ecg_data ({", ".join(column_names)})
+                VALUES ({", ".join(f":{column}" for column in column_names)})
+                """
+            ),
+            rows,
+        )
+
     def _insert_raw_frame(self, db, frame, user_id):
         received_at = datetime.fromtimestamp(frame.received_at_ms / 1000, tz=timezone.utc)
         self._dynamic_insert(db, "wristband_data", {
@@ -482,37 +724,277 @@ class DataManager:
                     rows,
                 )
 
-    async def _run_ml_window(self, user_id: str, state: UserStreamState) -> Optional[InferredReading]:
-        frames = list(state.window)
-        state.window.clear()
+    def _load_wrist_sync_rows(self, db, user_id: str, after_received_at_ms: int) -> list[dict[str, Any]]:
+        wrist_columns = self._get_table_columns(db, "wristband_data")
+        select_cols = ["time", "frame_seq", "qi_w", "qi", "temperature"]
+        if "received_at_ms" in wrist_columns:
+            select_cols.append("received_at_ms")
+        if "device_timestamp_ms" in wrist_columns:
+            select_cols.append("device_timestamp_ms")
+        if "ppg_ir_batch" in wrist_columns:
+            select_cols.append("ppg_ir_batch")
+        elif "ppg_ir" in wrist_columns:
+            select_cols.append("ppg_ir")
+        if "ppg_red_batch" in wrist_columns:
+            select_cols.append("ppg_red_batch")
+        elif "ppg_red" in wrist_columns:
+            select_cols.append("ppg_red")
 
-        good_count = sum(1 for frame in frames if frame.qi == 1)
-        if good_count < self._min_quality_frames(len(frames)):
-            logger.info(
-                "ML window skipped for %s: %d/%d good frames in %s mode",
-                user_id,
-                good_count,
-                len(frames),
-                state.mode,
-            )
-            return None
+        where_clauses = ["user_id = :user_id"]
+        params: dict[str, Any] = {"user_id": user_id, "row_limit": DB_SYNC_FETCH_LIMIT}
+        if "received_at_ms" in wrist_columns and after_received_at_ms > 0:
+            where_clauses.append("received_at_ms > :after_ms")
+            params["after_ms"] = after_received_at_ms
 
-        waveform_window = None
-        if state.mode == "waveform":
-            raw_db = self._db_factory()
+        rows = db.execute(
+            text(
+                f"""
+                SELECT {", ".join(select_cols)}
+                FROM wristband_data
+                WHERE {" AND ".join(where_clauses)}
+                ORDER BY time ASC
+                LIMIT :row_limit
+                """
+            ),
+            params,
+        ).mappings().all()
+
+        normalized_rows: list[dict[str, Any]] = []
+        for row in rows:
+            raw_received_ms = row.get("received_at_ms")
+            if raw_received_ms is None:
+                timestamp_value = row.get("time")
+                raw_received_ms = int(timestamp_value.timestamp() * 1000) if timestamp_value is not None else 0
+            raw_device_ts = row.get("device_timestamp_ms")
+            device_ts_ms: Optional[int]
             try:
-                waveform_window = self._build_waveform_window_from_timescale(raw_db, user_id, frames)
-            except Exception as exc:
-                logger.warning("Timescale waveform load failed for %s: %s", user_id, exc)
-            finally:
-                raw_db.close()
+                device_ts_ms = int(raw_device_ts) if raw_device_ts is not None else None
+            except (TypeError, ValueError):
+                device_ts_ms = None
 
-            if waveform_window is None:
-                waveform_window = self._build_waveform_window(frames)
+            ppg_ir = self._decode_numeric_series(row.get("ppg_ir_batch") if "ppg_ir_batch" in row else row.get("ppg_ir"))
+            ppg_red = self._decode_numeric_series(row.get("ppg_red_batch") if "ppg_red_batch" in row else row.get("ppg_red"))
+            if len(ppg_ir) < 2 or len(ppg_red) < 2:
+                continue
 
+            normalized_rows.append(
+                {
+                    "sq": int(row.get("frame_seq") or 0),
+                    "received_at_ms": int(raw_received_ms),
+                    "device_timestamp_ms": device_ts_ms,
+                    "qi_w": self._coerce_flag(row.get("qi_w", row.get("qi", 0))),
+                    "qi": self._coerce_flag(row.get("qi", row.get("qi_w", 0))),
+                    "tp": float(row.get("temperature") or 0.0),
+                    "ppg_ir_batch": [int(round(v)) for v in ppg_ir],
+                    "ppg_red_batch": [int(round(v)) for v in ppg_red],
+                }
+            )
+
+        normalized_rows.sort(key=lambda item: (int(item["received_at_ms"]), int(item.get("sq", 0))))
+        return normalized_rows
+
+    def _load_chest_sync_rows(self, db, user_id: str, after_received_at_ms: int) -> list[dict[str, Any]]:
+        ecg_columns = self._get_table_columns(db, "ecg_data")
+        select_cols = ["time", "frame_seq", "ecg_value"]
+        if "sample_index" in ecg_columns:
+            select_cols.append("sample_index")
+        if "received_at_ms" in ecg_columns:
+            select_cols.append("received_at_ms")
+        if "device_timestamp_ms" in ecg_columns:
+            select_cols.append("device_timestamp_ms")
+        if "ep" in ecg_columns:
+            select_cols.append("ep")
+        if "qi_c" in ecg_columns:
+            select_cols.append("qi_c")
+
+        where_clauses = ["user_id = :user_id"]
+        params: dict[str, Any] = {"user_id": user_id, "row_limit": DB_SYNC_FETCH_LIMIT * 16}
+        if "received_at_ms" in ecg_columns and after_received_at_ms > 0:
+            where_clauses.append("received_at_ms > :after_ms")
+            params["after_ms"] = after_received_at_ms
+
+        order_by = "time ASC, sample_index ASC" if "sample_index" in ecg_columns else "time ASC"
+        rows = db.execute(
+            text(
+                f"""
+                SELECT {", ".join(select_cols)}
+                FROM ecg_data
+                WHERE {" AND ".join(where_clauses)}
+                ORDER BY {order_by}
+                LIMIT :row_limit
+                """
+            ),
+            params,
+        ).mappings().all()
+
+        grouped: dict[int, dict[str, Any]] = {}
+        fallback_seq = 0
+        for row in rows:
+            raw_seq = row.get("frame_seq")
+            seq_num = int(raw_seq) if raw_seq is not None else fallback_seq
+            if raw_seq is None:
+                fallback_seq += 1
+
+            item = grouped.get(seq_num)
+            if item is None:
+                raw_received_ms = row.get("received_at_ms")
+                if raw_received_ms is None:
+                    timestamp_value = row.get("time")
+                    raw_received_ms = int(timestamp_value.timestamp() * 1000) if timestamp_value is not None else 0
+                raw_device_ts = row.get("device_timestamp_ms")
+                try:
+                    device_ts_ms = int(raw_device_ts) if raw_device_ts is not None else None
+                except (TypeError, ValueError):
+                    device_ts_ms = None
+                item = {
+                    "sq": seq_num,
+                    "received_at_ms": int(raw_received_ms),
+                    "device_timestamp_ms": device_ts_ms,
+                    "ep": self._coerce_flag(row.get("ep", 0)),
+                    "qi_c": self._coerce_flag(row.get("qi_c", 0)),
+                    "ecg": [],
+                }
+                grouped[seq_num] = item
+
+            ecg_value = row.get("ecg_value")
+            if ecg_value is not None:
+                item["ecg"].append(float(ecg_value))
+            item["ep"] = max(item["ep"], self._coerce_flag(row.get("ep", 0)))
+            item["qi_c"] = max(item["qi_c"], self._coerce_flag(row.get("qi_c", 0)))
+
+        chest_rows = [row for row in grouped.values() if row["ecg"]]
+        chest_rows.sort(key=lambda item: (int(item["received_at_ms"]), int(item.get("sq", 0))))
+        return chest_rows
+
+    @staticmethod
+    def _row_seq_distance(wrist_row: dict[str, Any], chest_row: dict[str, Any]) -> int:
+        try:
+            wrist_seq = int(wrist_row.get("sq", -1))
+            chest_seq = int(chest_row.get("sq", -1))
+        except (TypeError, ValueError):
+            return DB_SYNC_MISSING_SEQ_PENALTY
+        if wrist_seq < 0 or chest_seq < 0:
+            return DB_SYNC_MISSING_SEQ_PENALTY
+        return abs(wrist_seq - chest_seq)
+
+    @staticmethod
+    def _pair_timestamps_ms(wrist_row: dict[str, Any], chest_row: dict[str, Any]) -> tuple[int, int, int]:
+        wrist_device_ts = wrist_row.get("device_timestamp_ms")
+        chest_device_ts = chest_row.get("device_timestamp_ms")
+        if wrist_device_ts is not None and chest_device_ts is not None:
+            return int(wrist_device_ts), int(chest_device_ts), 0
+        return int(wrist_row["received_at_ms"]), int(chest_row["received_at_ms"]), 1
+
+    @classmethod
+    def _match_rows_by_timestamp(cls, wrist_rows: list[dict[str, Any]], chest_rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+        if not wrist_rows or not chest_rows:
+            return []
+
+        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        chest_index = 0
+        for wrist in wrist_rows:
+            best_index: Optional[int] = None
+            best_score: Optional[tuple[int, int, int]] = None
+
+            for idx in range(chest_index, len(chest_rows)):
+                chest_row = chest_rows[idx]
+                wrist_ts, chest_ts, clock_priority = cls._pair_timestamps_ms(wrist, chest_row)
+                delta = abs(chest_ts - wrist_ts)
+                if delta > DB_SYNC_TOLERANCE_MS:
+                    continue
+
+                seq_delta = cls._row_seq_distance(wrist, chest_row)
+                score = (delta, seq_delta, clock_priority)
+                if best_score is None or score < best_score:
+                    best_score = score
+                    best_index = idx
+
+            if best_index is None:
+                continue
+
+            pairs.append((wrist, chest_rows[best_index]))
+            chest_index = best_index + 1
+            if chest_index >= len(chest_rows):
+                break
+
+        return pairs
+
+    async def _attempt_db_synced_inference(self, user_id: str, state: UserStreamState) -> tuple[Optional[InferredReading], str]:
+        db = self._db_factory()
+        try:
+            wrist_rows = self._load_wrist_sync_rows(db, user_id, state.last_synced_wrist_received_at_ms)
+            chest_rows = self._load_chest_sync_rows(db, user_id, state.last_synced_chest_received_at_ms)
+        finally:
+            db.close()
+
+        matched_pairs = self._match_rows_by_timestamp(wrist_rows, chest_rows)
+        matched_count = len(matched_pairs)
+        state.mode = "waveform"
+        state.db_buffer_fill = f"{min(matched_count, WAVEFORM_WINDOW_FRAMES)}/{WAVEFORM_WINDOW_FRAMES}"
+
+        if matched_count < WAVEFORM_WINDOW_FRAMES:
+            return None, state.db_buffer_fill
+
+        selected_pairs = matched_pairs[:WAVEFORM_WINDOW_FRAMES]
+        frames: list[BLEFrame] = []
+        for wrist, chest in selected_pairs:
+            payload = {
+                "ts": int(wrist.get("device_timestamp_ms") or wrist["received_at_ms"]),
+                "sq": int(wrist["sq"]),
+                "pi": wrist["ppg_ir_batch"],
+                "pr": wrist["ppg_red_batch"],
+                "ax": 0,
+                "ay": 0,
+                "az": 0,
+                "gx": 0,
+                "gy": 0,
+                "gz": 0,
+                "tp": float(wrist.get("tp", 0.0)),
+                "ep": int(chest.get("ep", 0)),
+                "cs": int(chest["sq"]),
+                "ecg": [int(round(v)) for v in chest["ecg"]],
+                "qi_w": int(wrist.get("qi_w", 0)),
+                "qi_c": int(chest.get("qi_c", 0)),
+                "qi": 1 if int(wrist.get("qi_w", 0)) == 1 and int(chest.get("qi_c", 0)) == 1 else 0,
+                "bt": 100,
+            }
+            frame = BLEFrame.model_validate(payload)
+            frame.received_at_ms = int(wrist["received_at_ms"])
+            frames.append(frame)
+
+        waveform_window = self._build_waveform_window(frames)
+        inferred = None
+
+        if waveform_window is not None:
+            good_count = sum(1 for frame in frames if frame.qi == 1)
+            if good_count >= self._min_quality_frames(len(frames)):
+                inferred = await self._run_inference_and_store(user_id, state, frames, waveform_window)
+            else:
+                logger.info(
+                    "DB synced window skipped for %s: %d/%d good frames",
+                    user_id,
+                    good_count,
+                    len(frames),
+                )
+        else:
+            logger.info("DB synced window for %s did not produce a valid waveform window.", user_id)
+
+        last_wrist_ms = int(selected_pairs[-1][0]["received_at_ms"])
+        last_chest_ms = int(selected_pairs[-1][1]["received_at_ms"])
+        state.last_synced_wrist_received_at_ms = max(state.last_synced_wrist_received_at_ms, last_wrist_ms)
+        state.last_synced_chest_received_at_ms = max(state.last_synced_chest_received_at_ms, last_chest_ms)
+        state.db_buffer_fill = f"0/{WAVEFORM_WINDOW_FRAMES}"
+        return inferred, state.db_buffer_fill
+
+    async def _run_inference_and_store(
+        self,
+        user_id: str,
+        state: UserStreamState,
+        frames: list[BLEFrame],
+        waveform_window: Optional["WaveformWindow"],
+    ) -> Optional[InferredReading]:
         heart_rate = self._calc_heart_rate(frames, waveform_window=waveform_window)
         ptt, ptt_std = self._calc_ptt(frames, waveform_window=waveform_window)
-
         user_age = self._user_ages.get(user_id, self._user_age)
         try:
             from backend.database import UserSessionLocal
@@ -539,7 +1021,7 @@ class DataManager:
             logger.error("ML inference error for %s: %s", user_id, exc)
             return None
 
-        avg_quality = round(sum(frame.qi for frame in frames) / len(frames) * 100)
+        avg_quality = round(sum(frame.qi for frame in frames) / len(frames) * 100) if frames else 0
         reading_time = datetime.now(timezone.utc)
         inferred = InferredReading(
             timestamp=int(reading_time.timestamp() * 1000),
@@ -591,6 +1073,36 @@ class DataManager:
             return None
         finally:
             db.close()
+
+    async def _run_ml_window(self, user_id: str, state: UserStreamState) -> Optional[InferredReading]:
+        frames = list(state.window)
+        state.window.clear()
+
+        good_count = sum(1 for frame in frames if frame.qi == 1)
+        if good_count < self._min_quality_frames(len(frames)):
+            logger.info(
+                "ML window skipped for %s: %d/%d good frames in %s mode",
+                user_id,
+                good_count,
+                len(frames),
+                state.mode,
+            )
+            return None
+
+        waveform_window = None
+        if state.mode == "waveform":
+            raw_db = self._db_factory()
+            try:
+                waveform_window = self._build_waveform_window_from_timescale(raw_db, user_id, frames)
+            except Exception as exc:
+                logger.warning("Timescale waveform load failed for %s: %s", user_id, exc)
+            finally:
+                raw_db.close()
+
+            if waveform_window is None:
+                waveform_window = self._build_waveform_window(frames)
+
+        return await self._run_inference_and_store(user_id, state, frames, waveform_window)
 
     @staticmethod
     def _frame_duration_seconds(frames, waveform_window=None) -> float:

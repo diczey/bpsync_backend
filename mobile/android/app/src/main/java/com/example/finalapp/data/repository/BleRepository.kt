@@ -756,28 +756,17 @@ private object AndroidBleManager {
 
         lastSeq = normalized.optInt("sq", lastSeq)
 
-        val hasEmbeddedChestData = normalized.has("ecg") ||
-            normalized.optInt("qi_c", 0) == 1 ||
-            normalized.optInt("ep", 0) == 1 ||
-            normalized.has("cs")
-
-        if (!measurementStreaming && !hasEmbeddedChestData) {
+        if (!measurementStreaming) {
             publishStatus()
             return
         }
 
         val wristDevice = sessions.getValue(BleDeviceRole.WRIST).device
-        val uploadTarget = if (!sessions.getValue(BleDeviceRole.CHEST).isConnected || hasEmbeddedChestData) {
-            BleUploadTarget.MERGED
-        } else {
-            BleUploadTarget.WRIST
-        }
-
         scope.launch {
             uploadFrame(
                 rawFrame = normalized.toString(),
                 device = wristDevice,
-                target = uploadTarget
+                target = BleUploadTarget.WRIST
             )
         }
         publishStatus()
@@ -866,7 +855,6 @@ private object AndroidBleManager {
                 }
 
                 JSONObject().apply {
-                    put("ts", System.currentTimeMillis())
                     put("sq", seq)
                     put("ep", ep)
                     put("qi_c", qiC)
@@ -883,7 +871,11 @@ private object AndroidBleManager {
         if (seq < 0) return null
 
         val normalized = JSONObject()
-        normalized.put("ts", source.optLong("timestamp", source.optLong("ts", System.currentTimeMillis())))
+        if (source.has("timestamp")) {
+            normalized.put("ts", source.optLong("timestamp"))
+        } else if (source.has("ts")) {
+            normalized.put("ts", source.optLong("ts"))
+        }
         normalized.put("sq", seq)
         normalized.put("ep", source.optInt("r_peak", source.optInt("ep", 0)))
         normalized.put("qi_c", source.optInt("qi_c", source.optInt("qi", 0)))

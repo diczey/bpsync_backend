@@ -662,12 +662,7 @@ async def ingest_mobile_wrist_frame(
     ensure_ble_calibration_started(current_user, db, touch_last_connected=False)
     sensor_owner_key = canonical_sensor_user_key(current_user)
     data_manager.set_user_context(sensor_owner_key, current_user.age)
-    result = await mobile_frame_sync.ingest_partial_frame(
-        role="wrist",
-        raw_frame=raw_frame,
-        user_id=sensor_owner_key,
-        data_manager=data_manager,
-    )
+    result = await data_manager.process_wrist_frame(raw_frame, user_id=sensor_owner_key)
     if not result.success:
         mobile_session_tracker.record_error(sensor_owner_key, message=result.message or "Wrist BLE frame processing failed.")
         raise HTTPException(status_code=400, detail=result.message or "Wrist BLE frame processing failed.")
@@ -690,12 +685,7 @@ async def ingest_mobile_chest_frame(
     ensure_ble_calibration_started(current_user, db, touch_last_connected=False)
     sensor_owner_key = canonical_sensor_user_key(current_user)
     data_manager.set_user_context(sensor_owner_key, current_user.age)
-    result = await mobile_frame_sync.ingest_partial_frame(
-        role="chest",
-        raw_frame=raw_frame,
-        user_id=sensor_owner_key,
-        data_manager=data_manager,
-    )
+    result = await data_manager.process_chest_frame(raw_frame, user_id=sensor_owner_key)
     if not result.success:
         mobile_session_tracker.record_error(sensor_owner_key, message=result.message or "Chest BLE frame processing failed.")
         raise HTTPException(status_code=400, detail=result.message or "Chest BLE frame processing failed.")
