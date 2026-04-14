@@ -285,14 +285,28 @@ fun BLEConnectionScreen(
                         Spacer(modifier = Modifier.height(10.dp))
                         Button(
                             onClick = viewModel::startMeasurement,
+                            enabled = !uiState.startingMeasurement && !uiState.stoppingMeasurement,
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
                         ) {
-                            Text(
-                                t("Start Measurement", "Olcume Basla"),
-                                fontWeight = FontWeight.Bold
-                            )
+                            if (uiState.startingMeasurement) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    t("Starting...", "Baslatiliyor..."),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            } else {
+                                Text(
+                                    t("Start Measurement", "Olcume Basla"),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
 
@@ -300,11 +314,30 @@ fun BLEConnectionScreen(
                         Spacer(modifier = Modifier.height(10.dp))
                         OutlinedButton(
                             onClick = viewModel::stopMeasurement,
+                            enabled = !uiState.startingMeasurement && !uiState.stoppingMeasurement,
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(16.dp),
                             border = BorderStroke(1.dp, ErrorRed)
                         ) {
-                            Text(t("Stop Measurement", "Olcumu Durdur"), color = ErrorRed, fontWeight = FontWeight.Bold)
+                            if (uiState.stoppingMeasurement) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = ErrorRed
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    t("Stopping...", "Durduruluyor..."),
+                                    color = ErrorRed,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            } else {
+                                Text(
+                                    t("Stop Measurement", "Olcumu Durdur"),
+                                    color = ErrorRed,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
 

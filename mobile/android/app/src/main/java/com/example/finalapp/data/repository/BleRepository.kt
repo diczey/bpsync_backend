@@ -35,6 +35,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONArray
@@ -75,25 +78,31 @@ private data class DeviceSession(
 }
 
 private object LocalBleStateStore {
-    var status: BLEStatusResponse = BLEStatusResponse(
-        available = false,
-        connected = false,
-        deviceName = "",
-        deviceAddress = null,
-        connectedAt = null,
-        dataStats = emptyMap(),
-        wristConnected = false,
-        chestConnected = false,
-        wristDeviceName = null,
-        wristDeviceAddress = null,
-        chestDeviceName = null,
-        chestDeviceAddress = null,
-        streaming = false
+    private val _status = MutableStateFlow(
+        BLEStatusResponse(
+            available = false,
+            connected = false,
+            deviceName = "",
+            deviceAddress = null,
+            connectedAt = null,
+            dataStats = emptyMap(),
+            wristConnected = false,
+            chestConnected = false,
+            wristDeviceName = null,
+            wristDeviceAddress = null,
+            chestDeviceName = null,
+            chestDeviceAddress = null,
+            streaming = false
+        )
     )
-        private set
+
+    val statusFlow: StateFlow<BLEStatusResponse> = _status.asStateFlow()
+
+    val status: BLEStatusResponse
+        get() = _status.value
 
     fun update(status: BLEStatusResponse) {
-        this.status = status
+        _status.value = status
     }
 }
 
@@ -531,6 +540,7 @@ private object AndroidBleManager {
 
         connectedSessions.forEach { writeCommand(it, "STOP") }
         invalidateUploadSession(clearBuffers = true)
+        publishStatus()
         when (val backendResult = stopBackendMeasurementSession()) {
             is RepositoryResult.Success -> {
                 lastError = null
@@ -1093,6 +1103,10 @@ class BleRepository(context: Context? = null) {
 
     fun fetchBleStatus(): RepositoryResult<BLEStatusResponse> {
         return RepositoryResult.Success(AndroidBleManager.currentStatus())
+    }
+
+    fun observeBleStatus(): StateFlow<BLEStatusResponse> {
+        return LocalBleStateStore.statusFlow
     }
 
     suspend fun fetchPredictionModelInfo(): RepositoryResult<PredictionModelInfoResponse> {
