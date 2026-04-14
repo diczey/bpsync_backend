@@ -28,6 +28,7 @@ import java.util.Date
 import java.util.LinkedHashMap
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -151,6 +152,7 @@ private object AndroidBleManager {
     private var lastSeq = 0
     private var lastError: String? = null
     private var backendBufferFill = "0/$WINDOW_SIZE"
+    private val uploadEpoch = AtomicLong(0L)
 
     fun initialize(context: Context) {
         appContext = context.applicationContext
@@ -292,7 +294,7 @@ private object AndroidBleManager {
                     clearSession(session)
                 }
                 if (!bothDevicesConnected()) {
-                    measurementStreaming = false
+                    invalidateUploadSession(clearBuffers = true)
                 }
                 publishStatus()
                 finish(RepositoryResult.Error("Connection timed out. Try again closer to the device."))
@@ -333,7 +335,7 @@ private object AndroidBleManager {
                                 clearSession(session)
                             }
                             if (!bothDevicesConnected()) {
-                                measurementStreaming = false
+                                invalidateUploadSession(clearBuffers = true)
                             }
                             publishStatus()
                             scope.launch {
@@ -465,7 +467,7 @@ private object AndroidBleManager {
                     clearSession(session)
                 }
                 if (!bothDevicesConnected()) {
-                    measurementStreaming = false
+                    invalidateUploadSession(clearBuffers = true)
                 }
                 publishStatus()
             }
@@ -481,7 +483,7 @@ private object AndroidBleManager {
             return RepositoryResult.Error("Connect both Wrist and Chest before starting measurement.")
         }
 
-        measurementStreaming = false
+        invalidateUploadSession(clearBuffers = false)
         resetMeasurementCounters()
         clearBuffers()
         lastError = null
@@ -496,7 +498,7 @@ private object AndroidBleManager {
         if (!wristStarted || !chestStarted) {
             if (wristStarted) writeCommand(wrist, "STOP")
             if (chestStarted) writeCommand(chest, "STOP")
-            measurementStreaming = false
+            invalidateUploadSession(clearBuffers = true)
             publishStatus()
             return RepositoryResult.Error("Couldn't send START to both BLE devices.")
         }
@@ -509,7 +511,7 @@ private object AndroidBleManager {
             is RepositoryResult.Error -> {
                 writeCommand(wrist, "STOP")
                 writeCommand(chest, "STOP")
-                measurementStreaming = false
+                invalidateUploadSession(clearBuffers = true)
                 updateLastError(backendSession.message)
                 return RepositoryResult.Error(backendSession.message)
             }
@@ -528,8 +530,7 @@ private object AndroidBleManager {
         }
 
         connectedSessions.forEach { writeCommand(it, "STOP") }
-        measurementStreaming = false
-        clearBuffers()
+        invalidateUploadSession(clearBuffers = true)
         when (val backendResult = stopBackendMeasurementSession()) {
             is RepositoryResult.Success -> {
                 lastError = null
@@ -547,8 +548,7 @@ private object AndroidBleManager {
     fun disconnect() {
         disconnectSession(BleDeviceRole.WRIST, clearMeasurementState = false)
         disconnectSession(BleDeviceRole.CHEST, clearMeasurementState = false)
-        measurementStreaming = false
-        clearBuffers()
+        invalidateUploadSession(clearBuffers = true)
         publishStatus()
     }
 
@@ -567,7 +567,14 @@ private object AndroidBleManager {
         }
         clearSession(session)
         if (clearMeasurementState) {
-            measurementStreaming = false
+            invalidateUploadSession(clearBuffers = true)
+        }
+    }
+
+    private fun invalidateUploadSession(clearBuffers: Boolean) {
+        uploadEpoch.incrementAndGet()
+        measurementStreaming = false
+        if (clearBuffers) {
             clearBuffers()
         }
     }
@@ -762,11 +769,13 @@ private object AndroidBleManager {
         }
 
         val wristDevice = sessions.getValue(BleDeviceRole.WRIST).device
+        val frameEpoch = uploadEpoch.get()
         scope.launch {
             uploadFrame(
                 rawFrame = normalized.toString(),
                 device = wristDevice,
-                target = BleUploadTarget.WRIST
+                target = BleUploadTarget.WRIST,
+                frameEpoch = frameEpoch
             )
         }
         publishStatus()
@@ -792,11 +801,13 @@ private object AndroidBleManager {
         }
 
         val chestDevice = sessions.getValue(BleDeviceRole.CHEST).device
+        val frameEpoch = uploadEpoch.get()
         scope.launch {
             uploadFrame(
                 rawFrame = normalized.toString(),
                 device = chestDevice,
-                target = BleUploadTarget.CHEST
+                target = BleUploadTarget.CHEST,
+                frameEpoch = frameEpoch
             )
         }
         publishStatus()
@@ -917,10 +928,16 @@ private object AndroidBleManager {
     private suspend fun uploadFrame(
         rawFrame: String,
         device: BleDevice?,
-        target: BleUploadTarget
+        target: BleUploadTarget,
+        frameEpoch: Long
     ) {
+        if (frameEpoch != uploadEpoch.get() || !measurementStreaming) {
+            return
+        }
+
         val token = SessionStore.token.value
         if (token.isNullOrBlank()) {
+            if (frameEpoch != uploadEpoch.get() || !measurementStreaming) return
             uploadFailures += 1
             updateLastError("BLE frame received but there is no active session token.")
             return
@@ -950,6 +967,7 @@ private object AndroidBleManager {
             }
         }.fold(
             onSuccess = { response ->
+                if (frameEpoch != uploadEpoch.get() || !measurementStreaming) return@fold
                 val body = response.body()
                 if (response.isSuccessful && body?.success == true) {
                     framesUploaded += 1
@@ -970,6 +988,7 @@ private object AndroidBleManager {
                 }
             },
             onFailure = {
+                if (frameEpoch != uploadEpoch.get() || !measurementStreaming) return@fold
                 uploadFailures += 1
                 updateLastError(it.message ?: "BLE frame upload failed.")
             }
