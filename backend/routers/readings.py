@@ -392,6 +392,59 @@ async def get_readings(
     return HealthReadingsResponse(success=True, readings=readings)
 
 
+@router.get('/measurements', response_model=HealthReadingsResponse)
+async def get_measurements(
+    limit: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_sensor_db),
+):
+    """
+    Return a lightweight measurement history directly from bp_readings.
+
+    This endpoint is used by the mobile measurements menu so it does not
+    pull the heavier combined /readings payload.
+    """
+    rows = db.execute(
+        text(f'''
+            SELECT
+                r.time,
+                r.user_id,
+                r.systolic,
+                r.diastolic,
+                r.heart_rate,
+                COALESCE(r.spo2, 98) AS spo2,
+                temp_match.temperature AS temperature
+            FROM bp_readings AS r
+            LEFT JOIN LATERAL (
+                SELECT w.temperature
+                FROM wristband_data AS w
+                WHERE {sensor_user_clause("w.user_id")}
+                  AND w.temperature IS NOT NULL
+                  AND w.time BETWEEN r.time - INTERVAL '12 hours' AND r.time + INTERVAL '12 hours'
+                ORDER BY ABS(EXTRACT(EPOCH FROM (w.time - r.time))) ASC
+                LIMIT 1
+            ) AS temp_match ON TRUE
+            WHERE {sensor_user_clause("r.user_id")}
+            ORDER BY r.time DESC
+            LIMIT :limit
+        '''),
+        {
+            **sensor_user_params(current_user),
+            'limit': limit,
+        },
+    ).fetchall()
+
+    if not rows:
+        return HealthReadingsResponse(
+            success=True,
+            readings=[],
+            message="No measurements found. Connect your BPSync wristband to start measuring.",
+        )
+
+    readings = [_row_to_dto(row) for row in rows]
+    return HealthReadingsResponse(success=True, readings=readings)
+
+
 @router.post('', response_model=HealthReadingsResponse)
 async def add_reading(
     request: HealthReadingCreate,

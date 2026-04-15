@@ -23,6 +23,12 @@ interface ApiService {
         @Query("include_raw") includeRaw: Boolean = false
     ): Response<HealthReadingsResponse>
 
+    @GET("readings/measurements")
+    suspend fun getMeasurements(
+        @Header("Authorization") token: String,
+        @Query("limit") limit: Int = 50
+    ): Response<HealthReadingsResponse>
+
     @GET("profile")
     suspend fun getProfile(@Header("Authorization") token: String): Response<ProfileResponse>
 

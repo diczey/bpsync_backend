@@ -76,7 +76,7 @@ object ReadingRepository {
             ?: return RepositoryResult.Success(_readings.value)
 
         return runCatching {
-            apiService.getReadings("Bearer $token", includeRaw = false)
+            apiService.getMeasurements("Bearer $token")
         }.fold(
             onSuccess = { response ->
                 val body = response.body()
@@ -91,11 +91,11 @@ object ReadingRepository {
                     body?.message?.isNotBlank() == true ->
                         RepositoryResult.Error(body.message)
                     else ->
-                        RepositoryResult.Error("Unable to load readings.")
+                        RepositoryResult.Error("Unable to load measurements.")
                 }
             },
             onFailure = {
-                RepositoryResult.Error(it.message ?: "Readings request failed.")
+                RepositoryResult.Error(it.message ?: "Measurements request failed.")
             }
         )
     }
