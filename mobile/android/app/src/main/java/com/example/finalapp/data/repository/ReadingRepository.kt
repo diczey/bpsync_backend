@@ -2,6 +2,7 @@ package com.example.finalapp.data.repository
 
 import com.example.finalapp.data.api.ApiClient
 import com.example.finalapp.data.api.ApiService
+import com.example.finalapp.data.model.BleInferredReadingDto
 import com.example.finalapp.data.model.HealthReadingDto
 import java.text.SimpleDateFormat
 import java.util.*
@@ -48,12 +49,34 @@ object ReadingRepository {
         _readings.value = listOf(reading) + _readings.value
     }
 
+    fun upsertFromBleInference(reading: BleInferredReadingDto) {
+        val timestamp = normalizeTimestamp(reading.timestamp)
+        val date = Date(timestamp)
+        val sdfDate = SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault())
+        val sdfTime = SimpleDateFormat("hh:mm a", Locale.getDefault())
+
+        val mapped = Reading(
+            id = "ble-${reading.timestamp}".hashCode(),
+            systolic = reading.systolic.toString(),
+            diastolic = reading.diastolic.toString(),
+            pulse = reading.heartRate.toString(),
+            spo2 = "--",
+            date = sdfDate.format(date),
+            time = sdfTime.format(date),
+            status = reading.category.ifBlank {
+                resolveStatus(reading.systolic.toString(), reading.diastolic.toString())
+            }
+        )
+
+        _readings.value = listOf(mapped) + _readings.value.filterNot { it.id == mapped.id }
+    }
+
     suspend fun syncFromApi(apiService: ApiService = ApiClient.apiService): RepositoryResult<List<Reading>> {
         val token = SessionStore.token.value
             ?: return RepositoryResult.Success(_readings.value)
 
         return runCatching {
-            apiService.getReadings("Bearer $token")
+            apiService.getReadings("Bearer $token", includeRaw = false)
         }.fold(
             onSuccess = { response ->
                 val body = response.body()

@@ -84,6 +84,8 @@ fun translateMessage(message: String, isTurkish: Boolean): String {
             "Kalibrasyon tamamlandi. 7. gune kadar kisisellestirilmis gunluk etiketler aktif."
         message == "7-day personalized health status is ready." ->
             "7 gunluk kisisellestirilmis saglik durumu hazir."
+        message == "Collect readings across 7 distinct days to unlock weekly status." ->
+            "Haftalik durumu acmak icin 7 farkli gunde olcum topla."
         message == "Not enough weekly readings to calculate health status." ->
             "Saglik durumunu hesaplamak icin haftalik olcum verisi yeterli degil."
         message == "This device does not support Bluetooth LE." ->

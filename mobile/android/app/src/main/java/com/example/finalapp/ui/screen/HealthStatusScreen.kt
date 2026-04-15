@@ -97,6 +97,7 @@ fun HealthStatusScreen(
         "awaiting_device" -> t("3-Day Calibration", "3 Günlük Kalibrasyon")
         "calibration" -> t("Calibration Countdown", "Kalibrasyon Geri Sayımı")
         "personalized" -> t("Calibration Complete", "Kalibrasyon Tamamlandı")
+        "weekly_pending" -> t("Weekly Data Pending", "Haftalık Veri Bekleniyor")
         else -> t("7-Day Health Status", "7 Günlük Sağlık Durumu")
     }
     val cardSubtitle = when (uiState.countdownPhase) {
@@ -111,6 +112,10 @@ fun HealthStatusScreen(
         "personalized" -> t(
             "Daily labels are now personalized until day 7",
             "Günlük etiketler artık 7. güne kadar kişiselleştirildi"
+        )
+        "weekly_pending" -> t(
+            "Collect readings on 7 distinct days to unlock weekly status",
+            "Haftalık durumu açmak için 7 farklı günde ölçüm topla"
         )
         else -> t(
             "Your weekly health status is now available",
@@ -153,6 +158,7 @@ fun HealthStatusScreen(
                             "awaiting_device" -> t("Waiting for BLE connection", "BLE bağlantısı bekleniyor")
                             "calibration" -> t("3-day calibration is running", "3 günlük kalibrasyon çalışıyor")
                             "personalized" -> t("Personalized tracking is active", "Kişiselleştirilmiş takip aktif")
+                            "weekly_pending" -> t("Waiting for more weekly data", "Daha fazla haftalık veri bekleniyor")
                             else -> t("7-day status is active", "7 günlük durum aktif")
                         },
                         fontSize = 13.sp,
@@ -188,6 +194,15 @@ fun HealthStatusScreen(
                         Text(
                             translateMessage(
                                 uiState.message ?: "Connect your wristband to start the 3-day calibration countdown.",
+                                isTurkish
+                            ),
+                            fontSize = 14.sp,
+                            color = ForegroundBlack
+                        )
+                    } else if (uiState.countdownPhase == "weekly_pending") {
+                        Text(
+                            translateMessage(
+                                uiState.message ?: "Collect readings across 7 distinct days to unlock weekly status.",
                                 isTurkish
                             ),
                             fontSize = 14.sp,

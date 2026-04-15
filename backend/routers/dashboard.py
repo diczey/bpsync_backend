@@ -431,6 +431,7 @@ async def get_health_status(
         text(f'''
             SELECT
                 COUNT(*) AS reading_count,
+                COUNT(DISTINCT DATE(time)) AS active_days,
                 AVG(systolic) AS avg_systolic,
                 AVG(diastolic) AS avg_diastolic,
                 AVG(heart_rate) AS avg_heart_rate
@@ -446,7 +447,31 @@ async def get_health_status(
         },
     ).fetchone()
 
-    if not weekly_stats or (weekly_stats.reading_count or 0) == 0:
+    weekly_reading_count = int(weekly_stats.reading_count or 0) if weekly_stats else 0
+    weekly_active_days = int(weekly_stats.active_days or 0) if weekly_stats and weekly_stats.active_days is not None else 0
+
+    if weekly_reading_count == 0 or weekly_active_days < 7:
+        return HealthStatusResponse(
+            success=True,
+            health_score=0,
+            overall_status="Personalized Tracking",
+            blood_pressure_status=bp_status,
+            heart_rate_status=hr_status,
+            oxygen_status=ox_status,
+            calibration_started_at=_to_ms(calibration_started_at),
+            calibration_ready_at=_to_ms(calibration_ready_at),
+            weekly_status_ready_at=_to_ms(weekly_ready_at),
+            seconds_until_calibrated=0,
+            seconds_until_weekly_status=max(0, int((weekly_ready_at - now).total_seconds())),
+            tracking_day=tracking_day,
+            is_calibrated=True,
+            is_week_ready=False,
+            countdown_phase="weekly_pending",
+            status_mode=status_mode,
+            message="Collect readings across 7 distinct days to unlock weekly status.",
+        )
+
+    if not weekly_stats or weekly_reading_count == 0:
         return HealthStatusResponse(
             success=False,
             health_score=0,

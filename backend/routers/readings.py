@@ -318,6 +318,7 @@ def _resolve_category(systolic: int, diastolic: int) -> str:
 @router.get('', response_model=HealthReadingsResponse)
 async def get_readings(
     limit: int = 50,
+    include_raw: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_sensor_db),
 ):
@@ -368,15 +369,18 @@ async def get_readings(
 
 
     readings: List[HealthReadingDto] = []
-    raw_index = next(
-        (
-            index
-            for index, row in enumerate(rows)
-            if getattr(row, "source_seq_start", None) is not None and getattr(row, "source_seq_end", None) is not None
-        ),
-        0 if rows else None,
-    )
-    raw_series = _load_latest_raw_series(db, current_user, rows[raw_index]) if raw_index is not None else (None, None)
+    raw_index = None
+    raw_series = (None, None)
+    if include_raw:
+        raw_index = next(
+            (
+                index
+                for index, row in enumerate(rows)
+                if getattr(row, "source_seq_start", None) is not None and getattr(row, "source_seq_end", None) is not None
+            ),
+            0 if rows else None,
+        )
+        raw_series = _load_latest_raw_series(db, current_user, rows[raw_index]) if raw_index is not None else (None, None)
     for index, row in enumerate(rows):
         ecg_data, ppg_data = raw_series if index == raw_index else (None, None)
         dto = _row_to_dto(row)

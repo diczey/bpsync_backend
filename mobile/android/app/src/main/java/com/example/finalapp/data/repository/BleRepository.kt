@@ -996,7 +996,11 @@ private object AndroidBleManager {
                     }
                     if (body.readingCreated) {
                         measurementsReady += 1
-                        ReadingRepository.syncFromApi()
+                        body.reading?.let { reading ->
+                            ReadingRepository.upsertFromBleInference(reading)
+                        } ?: run {
+                            ReadingRepository.syncFromApi()
+                        }
                     }
                     publishStatus()
                 } else {

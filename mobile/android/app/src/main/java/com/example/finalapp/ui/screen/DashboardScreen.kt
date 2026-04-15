@@ -107,7 +107,7 @@ fun DashboardScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val bleConnected = uiState.bleConnectedLabel.equals("Connected", ignoreCase = true)
+    val bleConnected = uiState.bleConnectedLabel != "Disconnected"
     val hasBloodPressure = uiState.systolic != "--" && uiState.diastolic != "--"
     val heroSubtitle = when {
         uiState.isLoading -> t("Refreshing latest reading", "Son olcum yenileniyor")

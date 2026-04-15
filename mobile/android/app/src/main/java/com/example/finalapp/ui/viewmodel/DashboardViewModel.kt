@@ -42,6 +42,7 @@ class DashboardViewModel(
     init {
         hydrateFromSession()
         observeReadings()
+        observeBleStatus()
         refreshDashboard()
     }
 
@@ -49,11 +50,7 @@ class DashboardViewModel(
         viewModelScope.launch {
             hydrateFromSession()
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-
-            when (ReadingRepository.syncFromApi()) {
-                is RepositoryResult.Success -> hydrateFromLocalReading()
-                is RepositoryResult.Error -> Unit
-            }
+            hydrateFromLocalReading()
 
             when (val dashboardResult = dashboardRepository.fetchDashboardSummary()) {
                 is RepositoryResult.Success -> {
@@ -149,6 +146,31 @@ class DashboardViewModel(
                 pulse = latest.pulse,
                 spo2 = latest.spo2
             )
+        }
+    }
+
+    private fun observeBleStatus() {
+        viewModelScope.launch {
+            bleRepository.observeBleStatus().collect { status ->
+                val bleName = when {
+                    status.wristConnected && status.chestConnected -> "Wrist + Chest"
+                    status.wristConnected -> status.wristDeviceName ?: "Wrist"
+                    status.chestConnected -> status.chestDeviceName ?: "Chest"
+                    else -> "Wrist + Chest"
+                }
+                val bleLabel = when {
+                    status.streaming -> "Measuring"
+                    status.wristConnected && status.chestConnected -> "Ready"
+                    status.wristConnected || status.chestConnected -> "Partial"
+                    else -> "Disconnected"
+                }
+                _uiState.update {
+                    it.copy(
+                        bleDeviceName = bleName,
+                        bleConnectedLabel = bleLabel
+                    )
+                }
+            }
         }
     }
 
