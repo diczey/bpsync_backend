@@ -111,8 +111,10 @@ def _row_to_dto(row) -> HealthReadingDto:
     Convert a bp_readings DB row into a HealthReadingDto.
 
     bp_readings may store spo2 for manual readings, but the live BLE CNN path
-    currently leaves it null. Temperature still comes from wristband_data at a
-    different write frequency, so it is returned as None here.
+    currently leaves it null. We mirror the dashboard behaviour by falling back
+    to a safe placeholder (98) until live SpO2 inference is implemented.
+    Temperature is written into wristband_data, so GET /readings selects the
+    nearest raw temperature sample for each BP row and exposes it here.
     A surrogate 'id' is built from user_id + timestamp to give each row a
     unique stable key (bp_readings has no UUID primary key in TimescaleDB).
     """
@@ -125,7 +127,7 @@ def _row_to_dto(row) -> HealthReadingDto:
         systolic_bp=row.systolic,
         diastolic_bp=row.diastolic,
         spo2=getattr(row, 'spo2', None),
-        temperature=None,  # Temperature is stored in wristband_data, not bp_readings
+        temperature=getattr(row, 'temperature', None),
     )
 
 
@@ -160,10 +162,26 @@ async def get_readings(
     """
     rows = db.execute(
         text(f'''
-            SELECT time, user_id, systolic, diastolic, heart_rate, spo2
-            FROM bp_readings
-            WHERE {sensor_user_clause()}
-            ORDER BY time DESC
+            SELECT
+                r.time,
+                r.user_id,
+                r.systolic,
+                r.diastolic,
+                r.heart_rate,
+                COALESCE(r.spo2, 98) AS spo2,
+                temp_match.temperature AS temperature
+            FROM bp_readings AS r
+            LEFT JOIN LATERAL (
+                SELECT w.temperature
+                FROM wristband_data AS w
+                WHERE {sensor_user_clause("w.user_id")}
+                  AND w.temperature IS NOT NULL
+                  AND w.time BETWEEN r.time - INTERVAL '12 hours' AND r.time + INTERVAL '12 hours'
+                ORDER BY ABS(EXTRACT(EPOCH FROM (w.time - r.time))) ASC
+                LIMIT 1
+            ) AS temp_match ON TRUE
+            WHERE {sensor_user_clause("r.user_id")}
+            ORDER BY r.time DESC
             LIMIT :limit
         '''),
         {
