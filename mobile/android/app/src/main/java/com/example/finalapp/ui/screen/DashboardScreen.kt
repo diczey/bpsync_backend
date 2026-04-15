@@ -1,6 +1,8 @@
 package com.example.finalapp.ui.screen
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,8 +15,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -22,7 +26,6 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
@@ -37,10 +40,8 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
@@ -57,24 +58,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.finalapp.ui.component.ActionCard
 import com.example.finalapp.ui.component.GlassCard
-import com.example.finalapp.ui.component.PremiumGlassCard
-import com.example.finalapp.ui.component.ReadingValue
-import com.example.finalapp.ui.component.VitalRow
 import com.example.finalapp.ui.localization.rememberIsTurkish
 import com.example.finalapp.ui.navigation.Screen
 import com.example.finalapp.ui.theme.ActivePink
 import com.example.finalapp.ui.theme.BackgroundGradient
-import com.example.finalapp.ui.theme.CyanMain
 import com.example.finalapp.ui.theme.ErrorRed
 import com.example.finalapp.ui.theme.ForegroundBlack
 import com.example.finalapp.ui.theme.OrangeMain
@@ -82,7 +79,6 @@ import com.example.finalapp.ui.theme.PrimaryBlue
 import com.example.finalapp.ui.theme.PrimaryGradient
 import com.example.finalapp.ui.theme.PurpleMain
 import com.example.finalapp.ui.theme.SuccessGreen
-import com.example.finalapp.ui.theme.TextMuted
 import com.example.finalapp.ui.theme.TextSecondary
 import com.example.finalapp.ui.viewmodel.DashboardViewModel
 import kotlinx.coroutines.launch
@@ -111,6 +107,20 @@ fun DashboardScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    val bleConnected = uiState.bleConnectedLabel.equals("Connected", ignoreCase = true)
+    val hasBloodPressure = uiState.systolic != "--" && uiState.diastolic != "--"
+    val heroSubtitle = when {
+        uiState.isLoading -> t("Refreshing latest reading", "Son olcum yenileniyor")
+        hasBloodPressure -> t("Latest reading is ready", "Son olcum hazir")
+        else -> t("Waiting for the next measurement", "Bir sonraki olcum bekleniyor")
+    }
+    val statusValue = when {
+        uiState.errorMessage != null -> t("Check now", "Kontrol et")
+        hasBloodPressure -> t("Stable", "Stabil")
+        else -> t("Pending", "Bekliyor")
+    }
+    val bleMetricValue = if (bleConnected) t("Ready", "Hazir") else t("Offline", "Bagli degil")
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -118,9 +128,13 @@ fun DashboardScreen(
                 modifier = Modifier.width(280.dp),
                 drawerShape = RoundedCornerShape(topEnd = 32.dp, bottomEnd = 32.dp)
             ) {
-                Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-                    Text(t("Menu", "Menü"), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text(t("Navigate your health", "Sağlığında gezin"), fontSize = 12.sp, color = TextSecondary)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp)
+                ) {
+                    Text(t("Menu", "Menu"), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(t("Navigate your health", "Sagliginda gezin"), fontSize = 12.sp, color = TextSecondary)
 
                     Spacer(modifier = Modifier.height(24.dp))
 
@@ -140,11 +154,7 @@ fun DashboardScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(uiState.userName, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                Text(
-                                    "${t("Health ID", "Sağlık ID")}: ${uiState.healthId}",
-                                    fontSize = 11.sp,
-                                    color = TextSecondary
-                                )
+                                Text("${t("Health ID", "Saglik ID")}: ${uiState.healthId}", fontSize = 11.sp, color = TextSecondary)
                             }
                         }
                     }
@@ -153,12 +163,12 @@ fun DashboardScreen(
 
                     val menuItems = listOf(
                         Triple(t("Dashboard", "Kontrol Paneli"), Screen.Dashboard, Icons.Default.Dashboard),
-                        Triple(t("Health Status", "Sağlık Durumu"), Screen.HealthStatus, Icons.Default.Security),
+                        Triple(t("Health Status", "Saglik Durumu"), Screen.HealthStatus, Icons.Default.Security),
                         Triple(t("Trends", "Trendler"), Screen.Trends, Icons.Default.ShowChart),
                         Triple(t("Blood Pressure", "Tansiyon"), Screen.BloodPressure, Icons.Default.Favorite),
-                        Triple(t("Heart Rate", "Kalp Atışı"), Screen.Pulse, Icons.Default.FavoriteBorder),
+                        Triple(t("Heart Rate", "Kalp Atisi"), Screen.Pulse, Icons.Default.Favorite),
                         Triple(t("PPG Signal", "PPG Sinyali"), Screen.PPG, Icons.Default.Wifi),
-                        Triple(t("Measurements", "Ölçümler"), Screen.Measurements, Icons.Default.History),
+                        Triple(t("Measurements", "Olcumler"), Screen.Measurements, Icons.Default.History),
                         Triple(t("Profile", "Profil"), Screen.Profile, Icons.Default.Person),
                         Triple(t("Settings", "Ayarlar"), Screen.Settings, Icons.Default.Settings)
                     )
@@ -168,7 +178,7 @@ fun DashboardScreen(
                             .weight(1f)
                             .verticalScroll(rememberScrollState())
                     ) {
-                        for ((label, screen, icon) in menuItems) {
+                        menuItems.forEach { (label, screen, icon) ->
                             NavigationDrawerItem(
                                 label = { Text(label, fontWeight = FontWeight.Bold) },
                                 selected = false,
@@ -201,11 +211,11 @@ fun DashboardScreen(
                             .navigationBarsPadding()
                             .height(52.dp),
                         shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ErrorRed.copy(alpha = 0.1f))
+                        colors = ButtonDefaults.buttonColors(containerColor = ErrorRed.copy(alpha = 0.12f))
                     ) {
                         Icon(Icons.Default.ExitToApp, contentDescription = null, tint = ErrorRed)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(t("Logout", "Çıkış Yap"), color = ErrorRed, fontWeight = FontWeight.Bold)
+                        Text(t("Logout", "Cikis Yap"), color = ErrorRed, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -219,39 +229,31 @@ fun DashboardScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .statusBarsPadding()
                     .verticalScroll(scrollState)
-                    .padding(20.dp)
+                    .padding(horizontal = 20.dp, vertical = 18.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
+                    SurfaceIconButton(
                         onClick = { scope.launch { drawerState.open() } },
-                        modifier = Modifier
-                            .size(44.dp)
-                            .background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
+                        backgroundColor = Color.White.copy(alpha = 0.9f)
                     ) {
-                        Icon(
-                            Icons.Default.Menu,
-                            contentDescription = t("Menu", "Menü"),
-                            tint = PrimaryBlue,
-                            modifier = Modifier.size(28.dp)
-                        )
+                        Icon(Icons.Default.Menu, contentDescription = t("Menu", "Menu"), tint = PrimaryBlue, modifier = Modifier.size(24.dp))
                     }
 
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("BP Sync", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                        Text(t("Health Monitoring", "Sağlık Takibi"), fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                        Text(t("Welcome back", "Tekrar hos geldin"), fontSize = 12.sp, color = TextSecondary)
+                        Text("BP Sync", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = ForegroundBlack)
                     }
 
-                    IconButton(
+                    SurfaceIconButton(
                         onClick = { navController.navigate(Screen.Notifications.route) },
-                        modifier = Modifier
-                            .size(44.dp)
-                            .background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
+                        backgroundColor = Color.White.copy(alpha = 0.9f)
                     ) {
                         BadgedBox(
                             badge = {
@@ -266,193 +268,273 @@ fun DashboardScreen(
                                 }
                             }
                         ) {
-                            Icon(
-                                Icons.Default.Notifications,
-                                contentDescription = t("Notifications", "Bildirimler"),
-                                tint = PrimaryBlue,
-                                modifier = Modifier.size(26.dp)
-                            )
+                            Icon(Icons.Default.Notifications, contentDescription = t("Notifications", "Bildirimler"), tint = PrimaryBlue, modifier = Modifier.size(22.dp))
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .background(PrimaryGradient, RoundedCornerShape(16.dp))
-                                    .padding(10.dp)
-                            ) {
-                                Icon(Icons.Default.Bluetooth, contentDescription = null, tint = Color.White)
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(uiState.bleDeviceName, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                                Text(
-                                    text = when (uiState.bleConnectedLabel) {
-                                        "Connected" -> t("Connected", "Bağlı")
-                                        "Disconnected" -> t("Disconnected", "Bağlı Değil")
-                                        else -> uiState.bleConnectedLabel
-                                    },
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                            }
-                        }
+                BleOverviewCard(
+                    title = uiState.bleDeviceName,
+                    status = if (bleConnected) t("Connected and ready", "Bagli ve hazir") else t("Connection required", "Baglanti gerekiyor"),
+                    healthId = uiState.healthId,
+                    bleConnected = bleConnected,
+                    onManageClick = { navController.navigate(Screen.BLEConnection.route) }
+                )
 
-                        Button(
-                            onClick = { navController.navigate(Screen.BLEConnection.route) },
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp)
-                        ) {
-                            Text(t("Manage", "Yönet"), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                HeroMeasurementCard(
+                    title = t("Blood Pressure", "Tansiyon"),
+                    subtitle = heroSubtitle,
+                    readingValue = "${uiState.systolic}/${uiState.diastolic}",
+                    buttonLabel = if (uiState.isLoading) t("Refreshing", "Yenileniyor") else t("Refresh Latest Measurement", "Son Olcumu Yenile"),
+                    onButtonClick = viewModel::showLatestMeasurement
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                SectionHeader(
+                    title = t("Vital Values", "Vital Degerler"),
+                    actionLabel = t("Details", "Detaylar"),
+                    onAction = { navController.navigate(Screen.BloodPressure.route) }
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    MetricCard(
+                        modifier = Modifier.weight(1f),
+                        title = t("Pulse", "Nabiz"),
+                        value = uiState.pulse,
+                        subtitle = "bpm",
+                        icon = Icons.Default.Favorite,
+                        backgroundColor = PrimaryBlue,
+                        valueColor = Color.White,
+                        metaColor = Color.White.copy(alpha = 0.7f)
+                    )
+                    MetricCard(
+                        modifier = Modifier.weight(1f),
+                        title = "SpO2",
+                        value = uiState.spo2,
+                        subtitle = "%",
+                        icon = Icons.Default.SettingsInputAntenna,
+                        backgroundColor = Color.White.copy(alpha = 0.96f),
+                        valueColor = ForegroundBlack,
+                        metaColor = TextSecondary
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                PremiumGlassCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(24.dp)) {
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .background(ErrorRed.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
-                                        .padding(10.dp)
-                                ) {
-                                    Icon(Icons.Default.Favorite, contentDescription = null, tint = ErrorRed)
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(t("Blood Pressure", "Tansiyon"), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                                    Text(t("Latest Reading", "Son Ölçüm"), fontSize = 12.sp, color = TextSecondary)
-                                }
-                            }
-                            TextButton(onClick = { navController.navigate(Screen.BloodPressure.route) }) {
-                                Text(t("Details", "Detaylar"), color = PrimaryBlue, fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ReadingValue(value = uiState.systolic, label = t("Systolic", "Sistolik"))
-                            Text(
-                                "/",
-                                fontSize = 32.sp,
-                                color = TextMuted,
-                                modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)
-                            )
-                            ReadingValue(value = uiState.diastolic, label = t("Diastolic", "Diyastolik"))
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
-                        HorizontalDivider(color = Color.Black.copy(alpha = 0.05f))
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            InfoItem(icon = Icons.Default.FavoriteBorder, text = "${t("Pulse", "Nabız")}: ${uiState.pulse} bpm", color = ErrorRed)
-                            InfoItem(icon = Icons.Default.SettingsInputAntenna, text = "SpO2: ${uiState.spo2}%", color = PrimaryBlue)
-                        }
-                    }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    MetricCard(
+                        modifier = Modifier.weight(1f),
+                        title = t("Status", "Durum"),
+                        value = statusValue,
+                        subtitle = t("health track", "takip durumu"),
+                        icon = Icons.Default.Security,
+                        backgroundColor = Color(0xFFEEF3FF),
+                        valueColor = ForegroundBlack,
+                        metaColor = TextSecondary,
+                        compact = true
+                    )
+                    MetricCard(
+                        modifier = Modifier.weight(1f),
+                        title = "BLE",
+                        value = bleMetricValue,
+                        subtitle = t("wrist + chest", "wrist + chest"),
+                        icon = Icons.Default.Bluetooth,
+                        backgroundColor = ForegroundBlack,
+                        valueColor = Color.White,
+                        metaColor = Color.White.copy(alpha = 0.56f),
+                        compact = true
+                    )
                 }
-
-                Spacer(modifier = Modifier.height(20.dp))
 
                 uiState.errorMessage?.let { error ->
-                    Text(
-                        text = error,
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 13.sp,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
-
-                Button(
-                    onClick = viewModel::showLatestMeasurement,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
-                ) {
-                    Text(
-                        if (uiState.isLoading) t("Refreshing...", "Yenileniyor...") else t("Refresh Latest Measurement", "Son Ölçümü Yenile"),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFFFF2F4), RoundedCornerShape(16.dp))
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Notifications, contentDescription = null, tint = ErrorRed, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(error, color = ErrorRed, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                SectionHeader(title = t("Quick Access", "Hizli Erisim"))
+
+                Spacer(modifier = Modifier.height(10.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    ActionCard(
+                    QuickAccessCard(
                         modifier = Modifier.weight(1f),
                         title = t("Trends", "Trendler"),
-                        subtitle = t("View History", "Geçmişi Gör"),
+                        subtitle = t("View history", "Gecmisi gor"),
                         icon = Icons.Default.ShowChart,
-                        color = PurpleMain,
+                        iconColor = PurpleMain,
+                        backgroundColor = Color.White.copy(alpha = 0.96f),
                         onClick = { navController.navigate(Screen.Trends.route) }
                     )
-                    ActionCard(
+                    QuickAccessCard(
                         modifier = Modifier.weight(1f),
-                        title = t("Health Status", "Sağlık Durumu"),
-                        subtitle = t("Check Status", "Durumu Gör"),
+                        title = t("Health", "Saglik"),
+                        subtitle = t("Check status", "Durumu gor"),
                         icon = Icons.Default.Security,
-                        color = SuccessGreen,
+                        iconColor = SuccessGreen,
+                        backgroundColor = Color(0xFFEEF3FF),
                         onClick = { navController.navigate(Screen.HealthStatus.route) }
                     )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                VitalRow(
-                    title = t("PPG Signal", "PPG Sinyali"),
-                    subtitle = t("Real-time monitoring", "Gerçek zamanlı izleme"),
-                    icon = Icons.Default.Wifi,
-                    color = OrangeMain
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    navController.navigate(Screen.PPG.route)
+                    QuickAccessCard(
+                        modifier = Modifier.weight(1f),
+                        title = t("PPG Signal", "PPG Sinyali"),
+                        subtitle = t("Real time", "Canli izleme"),
+                        icon = Icons.Default.Wifi,
+                        iconColor = OrangeMain,
+                        backgroundColor = ForegroundBlack,
+                        contentColor = Color.White,
+                        onClick = { navController.navigate(Screen.PPG.route) }
+                    )
+                    QuickAccessCard(
+                        modifier = Modifier.weight(1f),
+                        title = t("Measurements", "Olcumler"),
+                        subtitle = t("All records", "Tum kayitlar"),
+                        icon = Icons.Default.History,
+                        iconColor = ActivePink,
+                        backgroundColor = Color.White.copy(alpha = 0.96f),
+                        onClick = { navController.navigate(Screen.Measurements.route) }
+                    )
                 }
-                VitalRow(
-                    title = t("Heart Rate", "Kalp Atışı"),
-                    subtitle = if (uiState.pulse == "--") t("Waiting for data...", "Veri bekleniyor...") else "${uiState.pulse} bpm",
-                    icon = Icons.Default.Favorite,
-                    color = ActivePink
+
+            }
+        }
+    }
+}
+
+@Composable
+private fun SurfaceIconButton(
+    onClick: () -> Unit,
+    backgroundColor: Color,
+    content: @Composable () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(44.dp)
+            .background(backgroundColor, RoundedCornerShape(16.dp))
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun HeroMeasurementCard(
+    title: String,
+    subtitle: String,
+    readingValue: String,
+    buttonLabel: String,
+    onButtonClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PrimaryGradient, RoundedCornerShape(30.dp))
+            .padding(22.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(132.dp)
+                .background(Color.White.copy(alpha = 0.08f), CircleShape)
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .size(92.dp)
+                .background(Color.White.copy(alpha = 0.14f), CircleShape)
+        )
+
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "Dashboard",
+                fontSize = 11.sp,
+                color = Color.White.copy(alpha = 0.82f),
+                modifier = Modifier
+                    .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(99.dp))
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text(title, fontSize = 29.sp, lineHeight = 31.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+            Text(subtitle, fontSize = 12.sp, color = Color.White.copy(alpha = 0.74f), modifier = Modifier.padding(top = 6.dp))
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Button(
+                    modifier = Modifier.weight(1f),
+                    onClick = onButtonClick,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = PrimaryBlue),
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)
                 ) {
-                    navController.navigate(Screen.Pulse.route)
+                    Text(
+                        buttonLabel,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                VitalRow(
-                    title = t("All Measurements", "Tüm Ölçümler"),
-                    subtitle = t("View all data", "Tüm verileri gör"),
-                    icon = Icons.Default.History,
-                    color = com.example.finalapp.ui.theme.CyanMain
-                ) {
-                    navController.navigate(Screen.Measurements.route)
+
+                GlassCard(modifier = Modifier.width(166.dp).height(118.dp)) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Text("Latest", fontSize = 12.sp, color = TextSecondary, maxLines = 1, softWrap = false)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            readingValue,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = ForegroundBlack,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text("mmHg", fontSize = 11.sp, color = TextSecondary, maxLines = 1, softWrap = false)
+                    }
                 }
             }
         }
@@ -460,10 +542,232 @@ fun DashboardScreen(
 }
 
 @Composable
-fun InfoItem(icon: ImageVector, text: String, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(16.dp))
+private fun SectionHeader(
+    title: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+
+        if (actionLabel != null && onAction != null) {
+            TextButton(onClick = onAction) {
+                Text(actionLabel, color = PrimaryBlue, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetricCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    subtitle: String,
+    icon: ImageVector,
+    backgroundColor: Color,
+    valueColor: Color,
+    metaColor: Color,
+    compact: Boolean = false
+) {
+    Box(
+        modifier = modifier
+            .background(backgroundColor, RoundedCornerShape(24.dp))
+            .padding(16.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(
+                        if (valueColor == Color.White) Color.White.copy(alpha = 0.16f) else PrimaryBlue.copy(alpha = 0.08f),
+                        RoundedCornerShape(12.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = if (valueColor == Color.White) Color.White else PrimaryBlue,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text(title.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = metaColor)
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                value,
+                fontSize = if (compact) 18.sp else 28.sp,
+                lineHeight = if (compact) 21.sp else 30.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = valueColor,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(subtitle, fontSize = 11.sp, color = metaColor)
+        }
+    }
+}
+
+@Composable
+private fun BleOverviewCard(
+    title: String,
+    status: String,
+    healthId: String,
+    bleConnected: Boolean,
+    onManageClick: () -> Unit
+) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .background(
+                                if (bleConnected) PrimaryBlue.copy(alpha = 0.12f) else Color(0xFFEEF3FF),
+                                RoundedCornerShape(16.dp)
+                            )
+                            .padding(11.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Bluetooth,
+                            contentDescription = null,
+                            tint = if (bleConnected) PrimaryBlue else TextSecondary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column {
+                        Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                        Text(status, fontSize = 12.sp, color = TextSecondary)
+                    }
+                }
+
+                Button(
+                    onClick = onManageClick,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, PrimaryBlue.copy(alpha = 0.28f)),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White.copy(alpha = 0.9f),
+                        contentColor = PrimaryBlue
+                    ),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text("Yonet", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                healthId,
+                fontSize = 11.sp,
+                color = TextSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            InfoChip(
+                text = if (bleConnected) "BLE Bagli" else "BLE Cevrimdisi",
+                color = if (bleConnected) SuccessGreen else ErrorRed
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickAccessCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconColor: Color,
+    backgroundColor: Color,
+    contentColor: Color = ForegroundBlack,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .background(backgroundColor, RoundedCornerShape(24.dp))
+            .clickable(onClick = onClick)
+            .padding(16.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(
+                        if (contentColor == Color.White) Color.White.copy(alpha = 0.14f) else iconColor.copy(alpha = 0.12f),
+                        RoundedCornerShape(12.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = if (contentColor == Color.White) Color.White else iconColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Text(
+                title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = contentColor
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                subtitle,
+                fontSize = 11.sp,
+                color = if (contentColor == Color.White) Color.White.copy(alpha = 0.68f) else TextSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun InfoChip(
+    text: String,
+    color: Color
+) {
+    Row(
+        modifier = Modifier
+            .background(color.copy(alpha = 0.1f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(color, CircleShape)
+        )
         Spacer(modifier = Modifier.width(8.dp))
-        Text(text, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
+        Text(text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = color)
     }
 }

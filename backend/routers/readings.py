@@ -6,10 +6,12 @@
  ║             POST /readings/predict-bp, /calibrate-bp         ║
  ╚══════════════════════════════════════════════════════════════╝
 """
+import json
+import statistics
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import List, Optional
+from typing import Any, List, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone
 
@@ -131,6 +133,174 @@ def _row_to_dto(row) -> HealthReadingDto:
     )
 
 
+def _decode_numeric_series(value: Any) -> list[float]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return []
+        if stripped.startswith("[") and stripped.endswith("]"):
+            try:
+                value = json.loads(stripped)
+            except json.JSONDecodeError:
+                return []
+        else:
+            try:
+                return [float(stripped)]
+            except ValueError:
+                return []
+    if isinstance(value, (list, tuple)):
+        decoded: list[float] = []
+        for item in value:
+            try:
+                decoded.append(float(item))
+            except (TypeError, ValueError):
+                continue
+        return decoded
+    try:
+        return [float(value)]
+    except (TypeError, ValueError):
+        return []
+
+
+def _ppg_quality_from_series(ppg_ir: list[float], ppg_red: list[float], qi_value: Optional[int] = None) -> float:
+    combined = ppg_ir or ppg_red
+    if not combined:
+        return 0.0
+
+    mean_value = abs(statistics.fmean(combined))
+    spread = max(combined) - min(combined)
+    variability = statistics.pstdev(combined) if len(combined) > 1 else 0.0
+
+    base_quality = 100.0
+    if mean_value > 0:
+        base_quality -= min(55.0, (variability / mean_value) * 140.0)
+        base_quality -= min(20.0, (spread / mean_value) * 18.0)
+    else:
+        base_quality -= 60.0
+
+    if ppg_red and len(ppg_red) > 1:
+        red_mean = abs(statistics.fmean(ppg_red))
+        red_variability = statistics.pstdev(ppg_red)
+        if red_mean > 0:
+            base_quality -= min(15.0, (red_variability / red_mean) * 60.0)
+
+    if qi_value is not None and qi_value <= 0:
+        base_quality -= 35.0
+
+    return float(max(0.0, min(100.0, base_quality)))
+
+
+def _load_latest_raw_series(
+    db: Session,
+    current_user: User,
+    row,
+) -> tuple[Optional[List[float]], Optional[List[float]]]:
+    source_start = getattr(row, "source_seq_start", None)
+    source_end = getattr(row, "source_seq_end", None)
+    if source_start is None or source_end is None:
+        return None, None
+
+    params = {
+        **sensor_user_params(current_user),
+        "seq_start": int(source_start),
+        "seq_end": int(source_end),
+    }
+
+    ecg_rows = db.execute(
+        text(f"""
+            SELECT ecg_value
+            FROM ecg_data
+            WHERE {sensor_user_clause()}
+              AND frame_seq BETWEEN :seq_start AND :seq_end
+            ORDER BY frame_seq ASC, sample_index ASC
+        """),
+        params,
+    ).fetchall()
+    ecg_data = [
+        round(float(raw.ecg_value), 3)
+        for raw in ecg_rows
+        if getattr(raw, "ecg_value", None) is not None
+    ]
+
+    wrist_rows = db.execute(
+        text(f"""
+            SELECT ppg_ir, ppg_red, ppg_ir_batch, ppg_red_batch, qi_w, qi
+            FROM wristband_data
+            WHERE {sensor_user_clause()}
+              AND frame_seq BETWEEN :seq_start AND :seq_end
+            ORDER BY frame_seq ASC
+        """),
+        params,
+    ).fetchall()
+    ppg_quality = []
+    for raw in wrist_rows:
+        ir_series = _decode_numeric_series(
+            raw.ppg_ir_batch if getattr(raw, "ppg_ir_batch", None) is not None else raw.ppg_ir
+        )
+        red_series = _decode_numeric_series(
+            raw.ppg_red_batch if getattr(raw, "ppg_red_batch", None) is not None else raw.ppg_red
+        )
+        qi_value = max(int(getattr(raw, "qi_w", 0) or 0), int(getattr(raw, "qi", 0) or 0))
+        ppg_quality.append(round(_ppg_quality_from_series(ir_series, red_series, qi_value), 1))
+
+    if ecg_data or ppg_quality:
+        return (ecg_data or None, ppg_quality or None)
+
+    reading_time = getattr(row, "time", None)
+    if reading_time is None:
+        return None, None
+
+    fallback_params = {
+        **sensor_user_params(current_user),
+        "reading_time": reading_time,
+    }
+
+    fallback_ecg_rows = db.execute(
+        text(f"""
+            SELECT ecg_value
+            FROM ecg_data
+            WHERE {sensor_user_clause("user_id")}
+              AND time BETWEEN :reading_time - INTERVAL '5 minutes'
+                           AND :reading_time + INTERVAL '5 minutes'
+            ORDER BY time ASC, frame_seq ASC, sample_index ASC
+            LIMIT 1000
+        """),
+        fallback_params,
+    ).fetchall()
+    fallback_ecg_data = [
+        round(float(raw.ecg_value), 3)
+        for raw in fallback_ecg_rows
+        if getattr(raw, "ecg_value", None) is not None
+    ]
+
+    fallback_wrist_rows = db.execute(
+        text(f"""
+            SELECT ppg_ir, ppg_red, ppg_ir_batch, ppg_red_batch, qi_w, qi
+            FROM wristband_data
+            WHERE {sensor_user_clause("user_id")}
+              AND time BETWEEN :reading_time - INTERVAL '5 minutes'
+                           AND :reading_time + INTERVAL '5 minutes'
+            ORDER BY time ASC, frame_seq ASC
+            LIMIT 25
+        """),
+        fallback_params,
+    ).fetchall()
+    fallback_ppg_quality = []
+    for raw in fallback_wrist_rows:
+        ir_series = _decode_numeric_series(
+            raw.ppg_ir_batch if getattr(raw, "ppg_ir_batch", None) is not None else raw.ppg_ir
+        )
+        red_series = _decode_numeric_series(
+            raw.ppg_red_batch if getattr(raw, "ppg_red_batch", None) is not None else raw.ppg_red
+        )
+        qi_value = max(int(getattr(raw, "qi_w", 0) or 0), int(getattr(raw, "qi", 0) or 0))
+        fallback_ppg_quality.append(round(_ppg_quality_from_series(ir_series, red_series, qi_value), 1))
+
+    return (fallback_ecg_data or None, fallback_ppg_quality or None)
+
+
 def _resolve_category(systolic: int, diastolic: int) -> str:
     if systolic >= 140 or diastolic >= 90:
         return "Stage 2 Hypertension"
@@ -169,7 +339,9 @@ async def get_readings(
                 r.diastolic,
                 r.heart_rate,
                 COALESCE(r.spo2, 98) AS spo2,
-                temp_match.temperature AS temperature
+                temp_match.temperature AS temperature,
+                r.source_seq_start,
+                r.source_seq_end
             FROM bp_readings AS r
             LEFT JOIN LATERAL (
                 SELECT w.temperature
@@ -195,10 +367,25 @@ async def get_readings(
         return HealthReadingsResponse(success=True, readings=[], message="No readings found. Connect your BPSync wristband to start measuring.")
 
 
-    return HealthReadingsResponse(
-        success=True,
-        readings=[_row_to_dto(r) for r in rows],
+    readings: List[HealthReadingDto] = []
+    raw_index = next(
+        (
+            index
+            for index, row in enumerate(rows)
+            if getattr(row, "source_seq_start", None) is not None and getattr(row, "source_seq_end", None) is not None
+        ),
+        0 if rows else None,
     )
+    raw_series = _load_latest_raw_series(db, current_user, rows[raw_index]) if raw_index is not None else (None, None)
+    for index, row in enumerate(rows):
+        ecg_data, ppg_data = raw_series if index == raw_index else (None, None)
+        dto = _row_to_dto(row)
+        if ecg_data is not None or ppg_data is not None:
+            dto.ecg_data = ecg_data
+            dto.ppg_data = ppg_data
+        readings.append(dto)
+
+    return HealthReadingsResponse(success=True, readings=readings)
 
 
 @router.post('', response_model=HealthReadingsResponse)

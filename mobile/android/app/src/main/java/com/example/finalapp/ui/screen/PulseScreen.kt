@@ -145,12 +145,22 @@ fun PulseScreen(
                     }
                     
                     Spacer(modifier = Modifier.height(24.dp))
-                    
+                    val rawErrorMessage = uiState.errorMessage
+
                     if (uiState.isMonitoring && uiState.ecgWaveformPoints.isNotEmpty()) {
                          ECGWaveform(points = uiState.ecgWaveformPoints)
                     } else if (!uiState.isMonitoring) {
                          Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                              Text(t("Monitoring Paused", "İzleme Duraklatıldı"), color = TextMuted, fontSize = 14.sp)
+                         }
+                    } else if (rawErrorMessage != null) {
+                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                             Text(
+                                 translateMessage(rawErrorMessage, isTurkish),
+                                 color = TextMuted,
+                                 fontSize = 14.sp,
+                                 fontWeight = FontWeight.Medium
+                             )
                          }
                     } else {
                          Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

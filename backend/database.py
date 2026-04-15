@@ -119,6 +119,118 @@ def create_sensor_tables():
     print("[DB] TimescaleDB sensor tables ready.")
 
 
+def create_sensor_tables_v2():
+    """
+    Create or upgrade TimescaleDB sensor tables with idempotent statements.
+
+    The legacy bootstrap executed a multi-statement SQL blob in one call, which
+    could stop migration early on some drivers. This version runs each step
+    separately so startup reliably applies missing columns and indexes.
+    """
+    statements = [
+        "CREATE EXTENSION IF NOT EXISTS timescaledb",
+        """
+        CREATE TABLE IF NOT EXISTS wristband_data (
+            time        TIMESTAMPTZ  NOT NULL,
+            user_id     VARCHAR(255) NOT NULL,
+            device_timestamp_ms BIGINT,
+            received_at_ms BIGINT,
+            frame_seq   INTEGER,
+            chest_seq   INTEGER,
+            frame_mode  VARCHAR(20),
+            ppg_ir      BIGINT,
+            ppg_red     BIGINT,
+            ppg_ir_batch JSONB,
+            ppg_red_batch JSONB,
+            ax INT, ay INT, az INT,
+            gx INT, gy INT, gz INT,
+            temperature FLOAT,
+            ep SMALLINT, qi_w SMALLINT, qi_c SMALLINT, qi SMALLINT,
+            battery SMALLINT
+        )
+        """,
+        "SELECT create_hypertable('wristband_data', 'time', if_not_exists => TRUE)",
+        """
+        CREATE INDEX IF NOT EXISTS idx_wristband_user_time
+            ON wristband_data (user_id, time DESC)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ecg_data (
+            time      TIMESTAMPTZ NOT NULL,
+            user_id   VARCHAR(255) NOT NULL,
+            device_timestamp_ms BIGINT,
+            received_at_ms BIGINT,
+            frame_seq INTEGER,
+            sample_index SMALLINT,
+            ecg_value FLOAT,
+            ep SMALLINT,
+            qi_c SMALLINT
+        )
+        """,
+        "SELECT create_hypertable('ecg_data', 'time', if_not_exists => TRUE)",
+        """
+        CREATE INDEX IF NOT EXISTS idx_ecg_user_time
+            ON ecg_data (user_id, time DESC)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS bp_readings (
+            time       TIMESTAMPTZ  NOT NULL,
+            user_id    VARCHAR(255) NOT NULL,
+            systolic   SMALLINT,
+            diastolic  SMALLINT,
+            heart_rate SMALLINT,
+            spo2       SMALLINT,
+            ptt        FLOAT,
+            quality    SMALLINT,
+            category   VARCHAR(30),
+            model_name VARCHAR(50),
+            stream_mode VARCHAR(20),
+            window_frames SMALLINT,
+            source_seq_start INTEGER,
+            source_seq_end INTEGER
+        )
+        """,
+        "SELECT create_hypertable('bp_readings', 'time', if_not_exists => TRUE)",
+        """
+        CREATE INDEX IF NOT EXISTS idx_bp_user_time
+            ON bp_readings (user_id, time DESC)
+        """,
+    ]
+    with ts_engine.connect() as conn:
+        for statement in statements:
+            conn.execute(text(statement))
+        conn.execute(text("ALTER TABLE wristband_data ALTER COLUMN user_id TYPE VARCHAR(255)"))
+        conn.execute(text("ALTER TABLE ecg_data ALTER COLUMN user_id TYPE VARCHAR(255)"))
+        conn.execute(text("ALTER TABLE bp_readings ALTER COLUMN user_id TYPE VARCHAR(255)"))
+        conn.execute(text("ALTER TABLE wristband_data ADD COLUMN IF NOT EXISTS device_timestamp_ms BIGINT"))
+        conn.execute(text("ALTER TABLE wristband_data ADD COLUMN IF NOT EXISTS received_at_ms BIGINT"))
+        conn.execute(text("ALTER TABLE wristband_data ADD COLUMN IF NOT EXISTS frame_seq INTEGER"))
+        conn.execute(text("ALTER TABLE wristband_data ADD COLUMN IF NOT EXISTS chest_seq INTEGER"))
+        conn.execute(text("ALTER TABLE wristband_data ADD COLUMN IF NOT EXISTS frame_mode VARCHAR(20)"))
+        conn.execute(text("ALTER TABLE wristband_data ADD COLUMN IF NOT EXISTS ppg_ir BIGINT"))
+        conn.execute(text("ALTER TABLE wristband_data ADD COLUMN IF NOT EXISTS ppg_red BIGINT"))
+        conn.execute(text("ALTER TABLE wristband_data ADD COLUMN IF NOT EXISTS ppg_ir_batch JSONB"))
+        conn.execute(text("ALTER TABLE wristband_data ADD COLUMN IF NOT EXISTS ppg_red_batch JSONB"))
+        conn.execute(text("ALTER TABLE ecg_data ADD COLUMN IF NOT EXISTS device_timestamp_ms BIGINT"))
+        conn.execute(text("ALTER TABLE ecg_data ADD COLUMN IF NOT EXISTS received_at_ms BIGINT"))
+        conn.execute(text("ALTER TABLE ecg_data ADD COLUMN IF NOT EXISTS frame_seq INTEGER"))
+        conn.execute(text("ALTER TABLE ecg_data ADD COLUMN IF NOT EXISTS sample_index SMALLINT"))
+        conn.execute(text("ALTER TABLE ecg_data ADD COLUMN IF NOT EXISTS ep SMALLINT"))
+        conn.execute(text("ALTER TABLE ecg_data ADD COLUMN IF NOT EXISTS qi_c SMALLINT"))
+        conn.execute(text("ALTER TABLE bp_readings ADD COLUMN IF NOT EXISTS spo2 SMALLINT"))
+        conn.execute(text("ALTER TABLE bp_readings ADD COLUMN IF NOT EXISTS ptt FLOAT"))
+        conn.execute(text("ALTER TABLE bp_readings ADD COLUMN IF NOT EXISTS quality SMALLINT"))
+        conn.execute(text("ALTER TABLE bp_readings ADD COLUMN IF NOT EXISTS model_name VARCHAR(50)"))
+        conn.execute(text("ALTER TABLE bp_readings ADD COLUMN IF NOT EXISTS stream_mode VARCHAR(20)"))
+        conn.execute(text("ALTER TABLE bp_readings ADD COLUMN IF NOT EXISTS window_frames SMALLINT"))
+        conn.execute(text("ALTER TABLE bp_readings ADD COLUMN IF NOT EXISTS source_seq_start INTEGER"))
+        conn.execute(text("ALTER TABLE bp_readings ADD COLUMN IF NOT EXISTS source_seq_end INTEGER"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_wristband_user_seq ON wristband_data (user_id, frame_seq DESC)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ecg_user_seq ON ecg_data (user_id, frame_seq DESC)"))
+        conn.commit()
+    print("[DB] TimescaleDB sensor tables ready (v2).")
+
+
 def normalize_sensor_user_keys():
     """
     Consolidate sensor rows onto canonical email-based owner keys.
@@ -203,7 +315,7 @@ def create_tables():
         print(f"[DB] Migration warning (users table): {e}")
 
     try:
-        create_sensor_tables()
+        create_sensor_tables_v2()
     except Exception as e:
         # Log but don't crash — sensor tables may already exist or extension unavailable
         print(f"[DB] Sensor table init warning: {e}")

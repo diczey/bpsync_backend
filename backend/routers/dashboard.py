@@ -6,12 +6,14 @@
  ║  Endpoints: /summary, /health-status, /pulse, /ppg/signal    ║
  ╚══════════════════════════════════════════════════════════════╝
 """
+import json
+import statistics
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import Optional, List
+from typing import Any, Optional, List
 from pydantic import BaseModel
 
 from backend.database import get_sensor_db
@@ -65,6 +67,65 @@ def _classify_bp(systolic: int, spo2: int, heart_rate: int) -> str:
     if spo2 < 95 or heart_rate > 100:
         return "ELEVATED"
     return "NORMAL"
+
+
+def _decode_numeric_series(value: Any) -> list[float]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return []
+        if stripped.startswith("[") and stripped.endswith("]"):
+            try:
+                value = json.loads(stripped)
+            except json.JSONDecodeError:
+                return []
+        else:
+            try:
+                return [float(stripped)]
+            except ValueError:
+                return []
+    if isinstance(value, (list, tuple)):
+        decoded: list[float] = []
+        for item in value:
+            try:
+                decoded.append(float(item))
+            except (TypeError, ValueError):
+                continue
+        return decoded
+    try:
+        return [float(value)]
+    except (TypeError, ValueError):
+        return []
+
+
+def _ppg_quality_from_series(ppg_ir: list[float], ppg_red: list[float], qi_value: Optional[int] = None) -> float:
+    combined = ppg_ir or ppg_red
+    if not combined:
+        return 0.0
+
+    mean_value = abs(statistics.fmean(combined))
+    spread = max(combined) - min(combined)
+    variability = statistics.pstdev(combined) if len(combined) > 1 else 0.0
+
+    base_quality = 100.0
+    if mean_value > 0:
+        base_quality -= min(55.0, (variability / mean_value) * 140.0)
+        base_quality -= min(20.0, (spread / mean_value) * 18.0)
+    else:
+        base_quality -= 60.0
+
+    if ppg_red and len(ppg_red) > 1:
+        red_mean = abs(statistics.fmean(ppg_red))
+        red_variability = statistics.pstdev(ppg_red)
+        if red_mean > 0:
+            base_quality -= min(15.0, (red_variability / red_mean) * 60.0)
+
+    if qi_value is not None and qi_value <= 0:
+        base_quality -= 35.0
+
+    return float(max(0.0, min(100.0, base_quality)))
 
 
 # ══════════════════════════════════════════════════════════════
@@ -499,7 +560,8 @@ async def get_pulse_data(
 ):
     """
     Return detailed Heart Rate & ECG data for the Pulse screen.
-    Combines real DB stats with a synthetic ECG waveform.
+    Uses only real Timescale rows. If no data is available, numeric fields
+    stay at zero and waveform points are returned empty.
     """
     # 1. Get latest BPM
     latest_row = db.execute(
@@ -545,7 +607,7 @@ async def get_pulse_data(
     pattern_rows = db.execute(
         text(f'''
             SELECT 
-                time_bucket('1 hour', time) AS bucket_time,
+                date_trunc('hour', time) AS bucket_time,
                 AVG(heart_rate) AS hr
             FROM bp_readings
             WHERE {sensor_user_clause()} AND time >= NOW() - INTERVAL '24 hours'
@@ -562,23 +624,21 @@ async def get_pulse_data(
         ) for r in pattern_rows
     ]
 
-    # 4. Generate Synthetic ECG Waveform (Fallback until real sensor data is tracked)
-    import math
-    ecg_waveform = []
-    # Generates 5 seconds of simple synthetic ECG at 100Hz (500 data points)
-    for i in range(500):
-        t = i / 100.0
-        # Base baseline drift
-        val = math.sin(t * 0.5) * 0.05
-        # P-wave synthesis
-        val += math.sin(t * math.pi * 5) * 0.1 if (t % 1.0) < 0.2 else 0
-        # QRS complex (sharp spike centered at t=0.25)
-        if 0.2 < (t % 1.0) < 0.3:
-            val += 2.0 * math.sin((t % 1.0 - 0.2) * math.pi * 10)
-        # T-wave synthesis
-        val += math.sin((t % 1.0 - 0.4) * math.pi * 4) * 0.2 if 0.4 < (t % 1.0) < 0.65 else 0
-        
-        ecg_waveform.append(round(val, 3))
+    # 4. Load recent raw ECG data from TimescaleDB.
+    ecg_rows = db.execute(
+        text(f'''
+            SELECT time, ecg_value
+            FROM ecg_data
+            WHERE {sensor_user_clause()}
+              AND ecg_value IS NOT NULL
+            ORDER BY time DESC
+            LIMIT 500
+        '''),
+        sensor_user_params(current_user),
+    ).fetchall()
+
+    ecg_waveform = [round(float(row.ecg_value), 3) for row in reversed(ecg_rows) if row.ecg_value is not None]
+    message = "Pulse screen using raw ECG data from TimescaleDB." if ecg_rows else "No raw ECG data available in TimescaleDB."
 
     return PulseResponse(
         success=True,
@@ -590,6 +650,7 @@ async def get_pulse_data(
         status_label=status_label,
         pattern_24h=pattern_24h,
         ecg_waveform_points=ecg_waveform,
+        message=message,
     )
 
 
@@ -609,46 +670,47 @@ class PpgSignalResponse(BaseModel):
 
 
 @router.get('/ppg/signal', response_model=PpgSignalResponse)
-async def get_ppg_signal(current_user: User = Depends(get_current_user)):
+async def get_ppg_signal(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_sensor_db),
+):
     """
-    Return synthetic PPG signal quality data for the PPG screen.
-    Since raw PPG signal quality over time is not currently tracked 
-    in the database, this acts as a demo endpoint to unblock frontend UI.
-    Provides 60 seconds of simulated stability metrics and points.
+    Return PPG signal quality data for the PPG screen.
+    Prefer raw Timescale wrist rows only. If no raw rows are available,
+    return empty chart points and zeroed summary values.
     """
-    import math
-    import time
-    
-    # Generate 60 seconds of synthetic signal quality data (1 point per second)
-    now_ms = int(time.time() * 1000)
-    
     chart_points = []
     qualities = []
-    
-    for i in range(60):
-        # Time steps of 1 second backwards, from oldest to newest
-        ts = now_ms - ((59 - i) * 1000)
-        
-        # Base quality around 85, with some sinusoidal variation and random noise
-        # This makes it look like a somewhat stable but fluctuating signal
-        base = 85.0
-        variation = math.sin(i * 0.2) * 10.0
-        noise = (i % 3) * 2.0 - 2.0  # simple deterministic noise
-        
-        # Ensure quality bounds are strictly 0 to 100
-        q = min(100.0, max(0.0, base + variation + noise))
-        round_q = round(q, 1)
-        
+
+    raw_rows = db.execute(
+        text(f'''
+            SELECT time, ppg_ir, ppg_red, ppg_ir_batch, ppg_red_batch, qi_w, qi
+            FROM wristband_data
+            WHERE {sensor_user_clause()}
+              AND (ppg_ir IS NOT NULL OR ppg_ir_batch IS NOT NULL)
+            ORDER BY time DESC
+            LIMIT 60
+        '''),
+        sensor_user_params(current_user),
+    ).fetchall()
+
+    for row in reversed(raw_rows):
+        raw_time = row.time
+        ts = int(raw_time.timestamp() * 1000)
+        ir_series = _decode_numeric_series(row.ppg_ir_batch if getattr(row, "ppg_ir_batch", None) is not None else row.ppg_ir)
+        red_series = _decode_numeric_series(row.ppg_red_batch if getattr(row, "ppg_red_batch", None) is not None else row.ppg_red)
+        qi_value = max(int(getattr(row, "qi_w", 0) or 0), int(getattr(row, "qi", 0) or 0))
+        quality = _ppg_quality_from_series(ir_series, red_series, qi_value)
+        round_q = round(quality, 1)
+
         chart_points.append(PpgDataPoint(timestamp=ts, quality=round_q))
         qualities.append(round_q)
-        
-    avg_q = int(sum(qualities) / len(qualities))
-    high_q = int(max(qualities))
-    low_q = int(min(qualities))
-    
-    # Signal stability: higher difference between min and max means lower stability
-    # 100 = perfectly stable (flatline), lower = unstable
+
+    avg_q = int(round(sum(qualities) / len(qualities))) if qualities else 0
+    high_q = int(max(qualities)) if qualities else 0
+    low_q = int(min(qualities)) if qualities else 0
     stability = max(0, 100 - (high_q - low_q))
+    message = "PPG screen using raw wristband rows from TimescaleDB." if raw_rows else "No raw PPG data available in TimescaleDB."
 
     return PpgSignalResponse(
         success=True,
@@ -657,5 +719,5 @@ async def get_ppg_signal(current_user: User = Depends(get_current_user)):
         highest_quality=high_q,
         lowest_quality=low_q,
         chart_points=chart_points,
-        message="Demo PPG data generated successfully."
+        message=message,
     )

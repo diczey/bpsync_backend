@@ -491,6 +491,9 @@ private object AndroidBleManager {
         if (!wrist.isConnected || !chest.isConnected) {
             return RepositoryResult.Error("Connect both Wrist and Chest before starting measurement.")
         }
+        if (SessionStore.token.value.isNullOrBlank()) {
+            return RepositoryResult.Error("BLE measurement cannot start without an active session token.")
+        }
 
         invalidateUploadSession(clearBuffers = false)
         resetMeasurementCounters()
@@ -512,22 +515,24 @@ private object AndroidBleManager {
             return RepositoryResult.Error("Couldn't send START to both BLE devices.")
         }
 
-        when (val backendSession = startBackendMeasurementSession()) {
-            is RepositoryResult.Success -> {
-                lastError = null
-            }
-
-            is RepositoryResult.Error -> {
-                writeCommand(wrist, "STOP")
-                writeCommand(chest, "STOP")
-                invalidateUploadSession(clearBuffers = true)
-                updateLastError(backendSession.message)
-                return RepositoryResult.Error(backendSession.message)
-            }
-        }
-
         measurementStreaming = true
         publishStatus()
+
+        // Keep START responsive: do not block UI on backend reset round-trip.
+        scope.launch {
+            when (val backendSession = startBackendMeasurementSession()) {
+                is RepositoryResult.Success -> {
+                    lastError = null
+                    publishStatus()
+                }
+
+                is RepositoryResult.Error -> {
+                    updateLastError(
+                        "${backendSession.message} Measurement continues; backend session will recover with incoming frames."
+                    )
+                }
+            }
+        }
         return RepositoryResult.Success("Measurement started on Wrist and Chest.")
     }
 

@@ -58,10 +58,11 @@ PERIOD_BACK = {
     'month': '30 days',
 }
 
-PERIOD_BUCKET = {
-    'day':   '1 hour',
-    'week':  '6 hours',
-    'month': '1 day',
+PERIOD_BUCKET_EXPR = {
+    # PostgreSQL-compatible bucket expressions (no Timescale-only functions).
+    'day':   "date_trunc('hour', time)",
+    'week':  "date_trunc('hour', time) - ((EXTRACT(hour FROM time)::int % 6) * INTERVAL '1 hour')",
+    'month': "date_trunc('day', time)",
 }
 
 
@@ -82,7 +83,7 @@ async def get_trends(
     Falls back to mock data when no rows exist and USE_MOCK_DATA=true.
     """
     back_interval = PERIOD_BACK.get(period, '7 days')
-    bucket_interval = PERIOD_BUCKET.get(period, '6 hours')
+    bucket_expr = PERIOD_BUCKET_EXPR.get(period, PERIOD_BUCKET_EXPR['week'])
 
     # 1. Fetch total summary (stats across the entire requested period) for the top boxes
     summary_row = db.execute(
@@ -90,8 +91,7 @@ async def get_trends(
             SELECT 
                 AVG(systolic) AS avg_sys, MAX(systolic) AS max_sys, MIN(systolic) AS min_sys,
                 AVG(diastolic) AS avg_dia, MAX(diastolic) AS max_dia, MIN(diastolic) AS min_dia,
-                AVG(heart_rate) AS avg_hr, MAX(heart_rate) AS max_hr, MIN(heart_rate) AS min_hr,
-                AVG(spo2) AS avg_spo2, MAX(spo2) AS max_spo2, MIN(spo2) AS min_spo2
+                AVG(heart_rate) AS avg_hr, MAX(heart_rate) AS max_hr, MIN(heart_rate) AS min_hr
             FROM bp_readings
             WHERE {sensor_user_clause()}
               AND time >= NOW() - CAST(:back AS interval)
@@ -111,11 +111,10 @@ async def get_trends(
     bucket_rows = db.execute(
         text(f'''
             SELECT 
-                time_bucket(CAST(:bucket AS interval), time) AS bucket_time,
+                {bucket_expr} AS bucket_time,
                 AVG(systolic) AS systolic,
                 AVG(diastolic) AS diastolic,
-                AVG(heart_rate) AS heart_rate,
-                AVG(spo2) AS spo2
+                AVG(heart_rate) AS heart_rate
             FROM bp_readings
             WHERE {sensor_user_clause()}
               AND time >= NOW() - CAST(:back AS interval)
@@ -125,11 +124,10 @@ async def get_trends(
         {
             **sensor_user_params(current_user),
             'back': back_interval,
-            'bucket': bucket_interval,
         },
     ).fetchall()
 
-    points_sys, points_dia, points_hr, points_spo2 = [], [], [], []
+    points_sys, points_dia, points_hr = [], [], []
     for row in bucket_rows:
         ts = int(row.bucket_time.timestamp() * 1000)
         if row.systolic is not None:
@@ -138,8 +136,6 @@ async def get_trends(
             points_dia.append(TrendDataPoint(timestamp=ts, value=round(float(row.diastolic), 2)))
         if row.heart_rate is not None:
             points_hr.append(TrendDataPoint(timestamp=ts, value=round(float(row.heart_rate), 2)))
-        if hasattr(row, 'spo2') and row.spo2 is not None:
-            points_spo2.append(TrendDataPoint(timestamp=ts, value=round(float(row.spo2), 2)))
 
     trends = [
         TrendDataDto(
@@ -165,10 +161,10 @@ async def get_trends(
         ),
         TrendDataDto(
             type="spo2",
-            data_points=points_spo2,
-            average=round(float(summary_row.avg_spo2), 2) if summary_row.avg_spo2 is not None else 0.0,
-            min=round(float(summary_row.min_spo2), 2) if summary_row.min_spo2 is not None else 0.0,
-            max=round(float(summary_row.max_spo2), 2) if summary_row.max_spo2 is not None else 0.0,
+            data_points=[],
+            average=0.0,
+            min=0.0,
+            max=0.0,
         )
     ]
 

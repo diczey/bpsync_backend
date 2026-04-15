@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.lang.System.currentTimeMillis
 
 data class BloodPressureUiState(
     val latestSystolic: Int = 0,
@@ -73,6 +74,7 @@ class BloodPressureViewModel(
             var diaPoints = emptyList<TrendDataPoint>()
             var sysMin = 0f; var sysMax = 1f
             var diaMin = 0f; var diaMax = 1f
+            var error: String? = null
 
             if (trendsResult is RepositoryResult.Success) {
                 val trends = trendsResult.data.trends
@@ -91,6 +93,22 @@ class BloodPressureViewModel(
                     diaMin = diaTrend.min * 0.95f
                     diaMax = diaTrend.max * 1.05f
                 }
+                if (sysPoints.isEmpty() && diaPoints.isEmpty() && latestSys > 0 && latestDia > 0) {
+                    val now = currentTimeMillis()
+                    sysPoints = listOf(TrendDataPoint(timestamp = now, value = latestSys.toFloat()))
+                    diaPoints = listOf(TrendDataPoint(timestamp = now, value = latestDia.toFloat()))
+                    avgSys = latestSys.toFloat()
+                    avgDia = latestDia.toFloat()
+                    sysMin = latestSys * 0.95f
+                    sysMax = latestSys * 1.05f
+                    diaMin = latestDia * 0.95f
+                    diaMax = latestDia * 1.05f
+                }
+                if (sysPoints.isEmpty() && diaPoints.isEmpty()) {
+                    error = trendsResult.data.message ?: "No trend data yet."
+                }
+            } else if (trendsResult is RepositoryResult.Error) {
+                error = trendsResult.message
             }
 
             _uiState.update {
@@ -106,7 +124,8 @@ class BloodPressureViewModel(
                     sysTrendMax = sysMax,
                     diaTrendMin = diaMin,
                     diaTrendMax = diaMax,
-                    isLoading = false
+                    isLoading = false,
+                    errorMessage = error
                 )
             }
         }
