@@ -165,6 +165,19 @@ async def get_dashboard_summary(
     if not bp_row:
         return DashboardResponse(success=False, message='No readings yet. Connect your BPSync wristband to start measuring.')
 
+    hr_row = db.execute(
+        text(f'''
+            SELECT heart_rate
+            FROM bp_readings
+            WHERE {sensor_user_clause()}
+              AND heart_rate IS NOT NULL
+              AND heart_rate > 0
+            ORDER BY time DESC
+            LIMIT 1
+        '''),
+        sensor_user_params(current_user),
+    ).fetchone()
+
 
     # Fetch the most-recent temperature from wristband raw frames.
     # wristband_data is updated continuously from the synchronized mobile flow,
@@ -181,15 +194,13 @@ async def get_dashboard_summary(
         sensor_user_params(current_user),
     ).fetchone()
 
-    # SpO2 is stored for manual/cuff readings. Live BLE waveform inference still
-    # leaves it NULL for now, so use 98 as a temporary placeholder in that case.
-    spo2 = int(bp_row.spo2) if getattr(bp_row, "spo2", None) is not None else 98
+    spo2 = int(bp_row.spo2) if getattr(bp_row, "spo2", None) is not None else 0
 
-    temperature = float(temp_row.temperature) if temp_row else 36.6
+    temperature = float(temp_row.temperature) if temp_row else 0.0
 
     systolic   = bp_row.systolic    or 0
     diastolic  = bp_row.diastolic   or 0
-    heart_rate = bp_row.heart_rate  or 0
+    heart_rate = int(hr_row.heart_rate) if hr_row and hr_row.heart_rate is not None else 0
 
     # Convert DB timestamp to Unix milliseconds so Android can parse it as Long
     last_updated_ms = int(bp_row.time.timestamp() * 1000)
@@ -370,7 +381,19 @@ async def get_health_status(
 
     latest_sys = int(latest_row.systolic) if latest_row and latest_row.systolic is not None else None
     latest_dia = int(latest_row.diastolic) if latest_row and latest_row.diastolic is not None else None
-    latest_hr = int(latest_row.heart_rate) if latest_row and latest_row.heart_rate is not None else None
+    latest_hr_row = db.execute(
+        text(f'''
+            SELECT heart_rate
+            FROM bp_readings
+            WHERE {sensor_user_clause()}
+              AND heart_rate IS NOT NULL
+              AND heart_rate > 0
+            ORDER BY time DESC
+            LIMIT 1
+        '''), sensor_user_params(current_user)
+    ).fetchone()
+
+    latest_hr = int(latest_hr_row.heart_rate) if latest_hr_row and latest_hr_row.heart_rate is not None else None
     latest_spo2 = int(latest_row.spo2) if latest_row and latest_row.spo2 is not None else None
 
     if is_calibrated and baseline_ready:
@@ -593,7 +616,9 @@ async def get_pulse_data(
         text(f'''
             SELECT heart_rate
             FROM bp_readings
-            WHERE {sensor_user_clause()} AND heart_rate IS NOT NULL
+            WHERE {sensor_user_clause()}
+              AND heart_rate IS NOT NULL
+              AND heart_rate > 0
             ORDER BY time DESC LIMIT 1
         '''), sensor_user_params(current_user)
     ).fetchone()
@@ -609,6 +634,7 @@ async def get_pulse_data(
             FROM bp_readings
             WHERE {sensor_user_clause()} AND time >= NOW() - INTERVAL '24 hours'
               AND heart_rate IS NOT NULL
+              AND heart_rate > 0
         '''), sensor_user_params(current_user)
     ).fetchone()
 
@@ -637,6 +663,7 @@ async def get_pulse_data(
             FROM bp_readings
             WHERE {sensor_user_clause()} AND time >= NOW() - INTERVAL '24 hours'
               AND heart_rate IS NOT NULL
+              AND heart_rate > 0
             GROUP BY bucket_time
             ORDER BY bucket_time ASC
         '''), sensor_user_params(current_user)

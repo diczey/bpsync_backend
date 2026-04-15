@@ -79,7 +79,7 @@ fun PPGScreen(
                         Box(modifier = Modifier.weight(1f).background(CyanMain.copy(alpha = 0.05f), RoundedCornerShape(16.dp)).padding(16.dp), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    if (uiState.isLoading && uiState.avgQuality == 0) "--" else "${uiState.avgQuality}", 
+                                    if (uiState.avgQuality > 0) "${uiState.avgQuality}" else "--",
                                     fontSize = 32.sp, fontWeight = FontWeight.Bold, color = CyanMain
                                 )
                                 Text(t("Avg Quality", "Ort. Kalite"), fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
@@ -89,7 +89,7 @@ fun PPGScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 val stabilityColor = if (uiState.signalStability > 80) SuccessGreen else if (uiState.signalStability > 50) OrangeMain else ErrorRed
                                 Text(
-                                    if (uiState.isLoading && uiState.signalStability == 0) "--" else "${uiState.signalStability}%", 
+                                    if (uiState.signalStability > 0) "${uiState.signalStability}%" else "--",
                                     fontSize = 32.sp, fontWeight = FontWeight.Bold, color = stabilityColor
                                 )
                                 Text(t("Stability", "Kararlılık"), fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Bold)

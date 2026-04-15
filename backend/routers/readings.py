@@ -112,11 +112,8 @@ def _row_to_dto(row) -> HealthReadingDto:
     """
     Convert a bp_readings DB row into a HealthReadingDto.
 
-    bp_readings may store spo2 for manual readings, but the live BLE CNN path
-    currently leaves it null. We mirror the dashboard behaviour by falling back
-    to a safe placeholder (98) until live SpO2 inference is implemented.
-    Temperature is written into wristband_data, so GET /readings selects the
-    nearest raw temperature sample for each BP row and exposes it here.
+    The list endpoint stays lightweight: it returns BP fields and the nearest
+    temperature context, but does not attach raw ECG/PPG windows.
     A surrogate 'id' is built from user_id + timestamp to give each row a
     unique stable key (bp_readings has no UUID primary key in TimescaleDB).
     """
@@ -318,7 +315,6 @@ def _resolve_category(systolic: int, diastolic: int) -> str:
 @router.get('', response_model=HealthReadingsResponse)
 async def get_readings(
     limit: int = 50,
-    include_raw: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_sensor_db),
 ):
@@ -339,10 +335,8 @@ async def get_readings(
                 r.systolic,
                 r.diastolic,
                 r.heart_rate,
-                COALESCE(r.spo2, 98) AS spo2,
-                temp_match.temperature AS temperature,
-                r.source_seq_start,
-                r.source_seq_end
+                r.spo2 AS spo2,
+                temp_match.temperature AS temperature
             FROM bp_readings AS r
             LEFT JOIN LATERAL (
                 SELECT w.temperature
@@ -368,27 +362,7 @@ async def get_readings(
         return HealthReadingsResponse(success=True, readings=[], message="No readings found. Connect your BPSync wristband to start measuring.")
 
 
-    readings: List[HealthReadingDto] = []
-    raw_index = None
-    raw_series = (None, None)
-    if include_raw:
-        raw_index = next(
-            (
-                index
-                for index, row in enumerate(rows)
-                if getattr(row, "source_seq_start", None) is not None and getattr(row, "source_seq_end", None) is not None
-            ),
-            0 if rows else None,
-        )
-        raw_series = _load_latest_raw_series(db, current_user, rows[raw_index]) if raw_index is not None else (None, None)
-    for index, row in enumerate(rows):
-        ecg_data, ppg_data = raw_series if index == raw_index else (None, None)
-        dto = _row_to_dto(row)
-        if ecg_data is not None or ppg_data is not None:
-            dto.ecg_data = ecg_data
-            dto.ppg_data = ppg_data
-        readings.append(dto)
-
+    readings = [_row_to_dto(row) for row in rows]
     return HealthReadingsResponse(success=True, readings=readings)
 
 
@@ -412,7 +386,7 @@ async def get_measurements(
                 r.systolic,
                 r.diastolic,
                 r.heart_rate,
-                COALESCE(r.spo2, 98) AS spo2,
+                r.spo2 AS spo2,
                 temp_match.temperature AS temperature
             FROM bp_readings AS r
             LEFT JOIN LATERAL (

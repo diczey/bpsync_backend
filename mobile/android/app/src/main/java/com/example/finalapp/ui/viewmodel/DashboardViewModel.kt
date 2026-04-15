@@ -57,10 +57,10 @@ class DashboardViewModel(
                     val summary = dashboardResult.data
                     _uiState.update {
                         it.copy(
-                            systolic = summary.latestSystolic.toString(),
-                            diastolic = summary.latestDiastolic.toString(),
-                            pulse = summary.latestHeartRate.toString(),
-                            spo2 = summary.latestSpo2.toString(),
+                            systolic = summary.latestSystolic.takeIf { it > 0 }?.toString() ?: "--",
+                            diastolic = summary.latestDiastolic.takeIf { it > 0 }?.toString() ?: "--",
+                            pulse = summary.latestHeartRate.takeIf { it > 0 }?.toString() ?: "--",
+                            spo2 = summary.latestSpo2.takeIf { it > 0 }?.toString() ?: "--",
                             isLoading = false,
                             errorMessage = null
                         )

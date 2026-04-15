@@ -57,9 +57,9 @@ object ReadingRepository {
 
         val mapped = Reading(
             id = "ble-${reading.timestamp}".hashCode(),
-            systolic = reading.systolic.toString(),
-            diastolic = reading.diastolic.toString(),
-            pulse = reading.heartRate.toString(),
+            systolic = reading.systolic.takeIf { it > 0 }?.toString() ?: "--",
+            diastolic = reading.diastolic.takeIf { it > 0 }?.toString() ?: "--",
+            pulse = reading.heartRate.takeIf { it > 0 }?.toString() ?: "--",
             spo2 = "--",
             date = sdfDate.format(date),
             time = sdfTime.format(date),
@@ -107,15 +107,15 @@ object ReadingRepository {
         val date = Date(timestamp)
         val dateFormat = SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault())
         val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
-        val systolic = dto.systolicBp?.toString() ?: "--"
-        val diastolic = dto.diastolicBp?.toString() ?: "--"
+        val systolic = displayValue(dto.systolicBp)
+        val diastolic = displayValue(dto.diastolicBp)
 
         return Reading(
             id = dto.id.hashCode(),
             systolic = systolic,
             diastolic = diastolic,
-            pulse = dto.heartRate?.toString() ?: "--",
-            spo2 = dto.spo2?.toString() ?: "--",
+            pulse = displayValue(dto.heartRate),
+            spo2 = displayValue(dto.spo2),
             date = dateFormat.format(date),
             time = timeFormat.format(date),
             status = resolveStatus(systolic, diastolic)
@@ -126,15 +126,19 @@ object ReadingRepository {
         return if (timestamp < 1_000_000_000_000L) timestamp * 1000 else timestamp
     }
 
+    private fun displayValue(value: Int?): String {
+        return value?.takeIf { it > 0 }?.toString() ?: "--"
+    }
+
     private fun resolveStatus(systolic: String, diastolic: String): String {
         val systolicValue = systolic.toIntOrNull()
         val diastolicValue = diastolic.toIntOrNull()
 
-        return if (
-            systolicValue != null &&
-            diastolicValue != null &&
-            (systolicValue > 130 || diastolicValue > 85)
-        ) {
+        if (systolicValue == null || diastolicValue == null || systolicValue <= 0 || diastolicValue <= 0) {
+            return "No Data"
+        }
+
+        return if (systolicValue > 130 || diastolicValue > 85) {
             "Elevated"
         } else {
             "Normal"

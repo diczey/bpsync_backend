@@ -96,7 +96,7 @@ fun PulseScreen(
 
                     Box(contentAlignment = Alignment.Center) {
                          Text(
-                             if (uiState.isLoading && uiState.currentBpm == 0) "--" else "${uiState.currentBpm}", 
+                             if (uiState.currentBpm > 0) "${uiState.currentBpm}" else "--",
                              fontSize = 72.sp, fontWeight = FontWeight.Bold, color = ActivePink
                          )
                          if (uiState.isMonitoring) {
@@ -118,7 +118,7 @@ fun PulseScreen(
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text(t("Resting HR", "Dinlenik Nabız"), fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Bold)
-                            Text(if (uiState.isLoading && uiState.restingHr == 0) "-- BPM" else "${uiState.restingHr} BPM", fontSize = 14.sp, color = ForegroundBlack, fontWeight = FontWeight.Bold)
+                            Text(if (uiState.restingHr > 0) "${uiState.restingHr} BPM" else "-- BPM", fontSize = 14.sp, color = ForegroundBlack, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -221,20 +221,27 @@ fun ECGWaveform(points: List<Float>) {
         val height = size.height
         val centerY = height / 2f
         val path = Path()
-        
+        val minValue = points.minOrNull() ?: 0f
+        val maxValue = points.maxOrNull() ?: 0f
+        val spread = (maxValue - minValue).takeIf { it > 0f } ?: 1f
+        val amplitude = (height * 0.35f).coerceAtLeast(1f)
+
         path.moveTo(0f, centerY)
-        
         val pointsCount = points.size
         if (pointsCount > 0) {
-            val segmentWidth = width / pointsCount
-            val scaleY = height / 5f 
-            
+            val segmentWidth = if (pointsCount > 1) width / (pointsCount - 1).toFloat() else width
+
             for (i in 0 until pointsCount) {
                 val x = i * segmentWidth
                 val dataIndex = ((i + phase * pointsCount).toInt()) % pointsCount
-                val rawY = points[dataIndex]
-                
-                path.lineTo(x, centerY - (rawY * scaleY))
+                val normalized = (((points[dataIndex] - minValue) / spread) * 2f) - 1f
+                val waveformY = centerY - (normalized * amplitude)
+
+                if (i == 0) {
+                    path.moveTo(x, waveformY)
+                } else {
+                    path.lineTo(x, waveformY)
+                }
             }
         } else {
             path.lineTo(width, centerY)

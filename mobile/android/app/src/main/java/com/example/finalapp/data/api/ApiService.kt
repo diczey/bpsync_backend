@@ -19,8 +19,7 @@ interface ApiService {
 
     @GET("readings")
     suspend fun getReadings(
-        @Header("Authorization") token: String,
-        @Query("include_raw") includeRaw: Boolean = false
+        @Header("Authorization") token: String
     ): Response<HealthReadingsResponse>
 
     @GET("readings/measurements")
