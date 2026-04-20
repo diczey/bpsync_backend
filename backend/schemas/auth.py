@@ -15,8 +15,12 @@ class UserDto(BaseModel):
     name: str
     avatar_url: Optional[str] = Field(None, serialization_alias="avatar_url")
     date_of_birth: Optional[str] = Field(None, serialization_alias="date_of_birth")
+    gender: Optional[str] = Field(None, serialization_alias="gender")
+    weight: Optional[str] = Field(None, serialization_alias="weight")
+    height: Optional[str] = Field(None, serialization_alias="height")
     blood_type: Optional[str] = Field(None, serialization_alias="blood_type")
     emergency_contact: Optional[str] = Field(None, serialization_alias="emergency_contact")
+    last_checkup_date: Optional[str] = Field(None, serialization_alias="last_checkup_date")
     
     class Config:
         from_attributes = True
@@ -40,9 +44,14 @@ class LoginResponse(BaseModel):
 class ProfileUpdateRequest(BaseModel):
     """Profile update request body"""
     name: Optional[str] = None
+    email: Optional[EmailStr] = None
     date_of_birth: Optional[str] = Field(None, serialization_alias="date_of_birth")
+    gender: Optional[str] = Field(None, serialization_alias="gender")
+    weight: Optional[str] = Field(None, serialization_alias="weight")
+    height: Optional[str] = Field(None, serialization_alias="height")
     blood_type: Optional[str] = Field(None, serialization_alias="blood_type")
     emergency_contact: Optional[str] = Field(None, serialization_alias="emergency_contact")
+    last_checkup_date: Optional[str] = Field(None, serialization_alias="last_checkup_date")
 
 
 class ProfileResponse(BaseModel):

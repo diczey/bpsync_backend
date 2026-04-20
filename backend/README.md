@@ -9,7 +9,7 @@ BPSync mobil uygulaması için RESTful API backend servisi.
 ### Seçenek 1: Python + FastAPI (Önerilen - Hızlı Prototipleme)
 - Hızlı geliştirme
 - Otomatik API dokümantasyonu (Swagger UI)
-- Kolay ML/XGBoost entegrasyonu
+- Kolay CNN-LSTM entegrasyonu
 - Async desteği
 
 ### Seçenek 2: Node.js + Express
@@ -62,7 +62,7 @@ backend/
 │   │   ├── auth_service.py
 │   │   ├── health_service.py
 │   │   ├── trend_service.py
-│   │   └── ml_service.py    # XGBoost BP tahmini
+│   │   └── bp_model_service.py  # CNN-LSTM BP tahmini
 │   │
 │   └── utils/               # Yardımcı fonksiyonlar
 │       ├── __init__.py

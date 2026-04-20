@@ -44,15 +44,24 @@ with engine.connect() as conn:
         )
     """))
     conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS ecg_data (
+            time        DATETIME NOT NULL,
+            user_id     TEXT     NOT NULL,
+            ecg_value   REAL
+        )
+    """))
+    conn.execute(text("""
         CREATE TABLE IF NOT EXISTS bp_readings (
             time        DATETIME NOT NULL,
             user_id     TEXT     NOT NULL,
             systolic    INTEGER,
             diastolic   INTEGER,
             heart_rate  INTEGER,
+            spo2        INTEGER,
             ptt         REAL,
             quality     INTEGER,
-            category    TEXT
+            category    TEXT,
+            model_name  TEXT
         )
     """))
     conn.commit()
@@ -86,6 +95,20 @@ WRIST_ONLY_FRAME = json.dumps({
     "bt": 100,
 })
 
+WAVEFORM_BATCH_FRAME = json.dumps({
+    "ts": 20001, "sq": 4,
+    "pi": [101000, 101500, 102000, 102800, 103200, 103000, 102200, 101600],
+    "pr": [71000, 71200, 71400, 71800, 72000, 71900, 71600, 71300],
+    "ax": -24, "ay": 130, "az": 16210,
+    "gx": 8, "gy": -3, "gz": 1,
+    "tp": 36.4,
+    "ep": 1,
+    "cs": 55,
+    "ecg": [2048, 2080, 2140, 2400, 3100, 2500, 2200, 2100, 2060, 2040],
+    "qi_w": 1, "qi_c": 1, "qi": 1,
+    "bt": 85,
+})
+
 INVALID_JSON = "not a json string"
 
 MISSING_FIELD_FRAME = json.dumps({
@@ -104,7 +127,7 @@ def _make_dm(**kwargs):
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def _make_frame(ep=0, pi=50000, qi=1):
@@ -139,6 +162,14 @@ class TestBLEFrame:
         assert frame.ep == 0
         assert frame.qi_c == 0
         assert frame.qi == 1  # wrist-only mode
+
+    def test_waveform_batch_frame_parse(self):
+        frame = BLEFrame.parse_raw_json(WAVEFORM_BATCH_FRAME)
+        assert frame.has_waveform_batch is True
+        assert len(frame.ppg_ir_batch) == 8
+        assert len(frame.ppg_red_batch) == 8
+        assert len(frame.ecg_batch) == 10
+        assert frame.frame_mode == "waveform"
 
     def test_invalid_json_raises(self):
         with pytest.raises(Exception):
@@ -257,7 +288,7 @@ class TestDataManager:
         dm = _make_dm(default_user_id="u-window")
         # Patch ML so it does not need real model file
         mock_result = {"systolic": 120, "diastolic": 80, "category": "Normal"}
-        with patch("backend.services.ml_service.predict_blood_pressure", return_value=mock_result):
+        with patch("backend.services.bp_model_service.predict_live_blood_pressure", return_value=mock_result):
             for _ in range(WINDOW_SIZE):
                 _run(dm.process_frame(VALID_FRAME))
         # Buffer should be empty after ML window ran
