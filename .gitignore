@@ -28,6 +28,10 @@ build/
 *.onnx
 model-training/trained_models/*.joblib
 model-training/trained_models/*.pkl
+!CNNmodels/
+!CNNmodels/model_ecg_ppg_red_ir.keras
+!scaler_X_red_ir.pkl
+!scaler_y_red_ir.pkl
 
 # ── Database ──────────────────────────────────────────────────
 *.sql.bak
@@ -42,3 +46,6 @@ desktop.ini
 # ── IDE ───────────────────────────────────────────────────────
 *.iml
 .idea/
+
+# Local Android Studio wrapper project used only for one-off testing
+mobile/FinalApp/

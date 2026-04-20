@@ -103,7 +103,7 @@ backend.app.schemas.health        → backend.schemas.health
 backend.app.utils.security        → backend.utils.security
 backend.app.utils.mock_data       → backend.utils.mock_data
 backend.app.config                → backend.config
-backend.app.services.ml_service   → backend.services.ml_service
+backend.app.services.bp_model_service   → backend.services.bp_model_service
 ```
 
 ---
@@ -181,7 +181,7 @@ backend.app.utils.security → backend.utils.security
 
 ---
 
-### 14. `backend/services/ml_service.py` — Model dosyası yolu düzeltmesi
+### 14. `backend/services/bp_model_service.py` — CNN runtime yolu
 
 | Satır | Mevcut | Olması Gereken |
 |-------|--------|----------------|
@@ -402,7 +402,7 @@ Akış:
 | 11 | `backend/routers/profile.py` | Backend | Import path |
 | 12 | `backend/routers/sensor.py` | Backend | Import + JWT + SQL |
 | 13 | `backend/routers/ble.py` | Backend | Import path |
-| 14 | `backend/services/ml_service.py` | Backend | Model path |
+| 14 | `backend/services/bp_model_service.py` | Backend | CNN runtime |
 | 15 | `backend/schemas/sensor.py` | Backend | Schema yeniden yaz |
 | 16 | `backend/config.py` | Backend | JWT secret güvenliği |
 | 17 | `database/docker-compose.yml` | Database | Volume path + uvicorn |

@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     
     # Mock Data (for development without real sensors)
     use_mock_data: bool = False
+
+    # BLE topology
+    # The production architecture is wrist -> phone -> backend.
+    # Keep server-side BLE scanning opt-in for local lab setups only.
+    enable_server_ble: bool = False
+
+    # Blood pressure inference backend
+    # The app now uses only the CNN-LSTM waveform model.
+    bp_model_backend: str = "cnn"
     
     @property
     def cors_origins(self) -> List[str]:
@@ -40,7 +49,8 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.allowed_origins.split(",")]
     
     class Config:
-        env_file = ".env"
+        import os
+        env_file = os.path.join(os.path.dirname(__file__), ".env")
         env_file_encoding = "utf-8"
 
 
