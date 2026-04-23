@@ -109,6 +109,18 @@ fun PPGScreen(
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = CyanMain)
                     }
+                } else if (uiState.chartPoints.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = translateMessage(
+                                uiState.backendMessage ?: "Complete a BLE measurement to see PPG signal data.",
+                                isTurkish
+                            ),
+                            color = TextMuted,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
                 } else if (uiState.chartPoints.isNotEmpty()) {
                     Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 24.dp)) {
                         val width = size.width

@@ -309,7 +309,7 @@ fun DashboardScreen(
                 ) {
                     MetricCard(
                         modifier = Modifier.fillMaxWidth(),
-                        title = t("Pulse", "Nabız"),
+                        title = t("Heart Rate", "Kalp Atışı"),
                         value = uiState.pulse,
                         subtitle = "bpm",
                         icon = Icons.Default.Favorite,

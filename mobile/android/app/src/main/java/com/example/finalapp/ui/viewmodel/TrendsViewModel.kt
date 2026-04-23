@@ -39,6 +39,7 @@ class TrendsViewModel(
     init {
         observeReadings()
         loadTrends("week")
+        observeNewReadings()
     }
 
     fun setPeriod(period: String) {
@@ -58,6 +59,20 @@ class TrendsViewModel(
             ReadingRepository.readings.collectLatest { readings ->
                 latestReadings = readings
                 applyMergedState()
+            }
+        }
+    }
+
+    private fun observeNewReadings() {
+        viewModelScope.launch {
+            var previousCount = ReadingRepository.readings.value.size
+            ReadingRepository.readings.collectLatest { readings ->
+                if (readings.size > previousCount) {
+                    previousCount = readings.size
+                    loadTrends(backendPeriod)
+                } else {
+                    previousCount = readings.size
+                }
             }
         }
     }
