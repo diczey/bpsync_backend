@@ -8,8 +8,9 @@ android {
     namespace = "com.example.finalapp"
     compileSdk = 36
 
+    val defaultApiBaseUrl = "https://bpsyncbackend-production.up.railway.app/"
     val releaseApiBaseUrl = providers.gradleProperty("API_BASE_URL")
-        .orElse("https://bpsyncbackend-production.up.railway.app/")
+        .orElse(defaultApiBaseUrl)
 
     defaultConfig {
         applicationId = "com.example.finalapp"
@@ -26,7 +27,7 @@ android {
     buildTypes {
         debug {
             val debugApiBaseUrl = providers.gradleProperty("DEBUG_API_BASE_URL")
-                .orElse("http://10.0.2.2:8000/")
+                .orElse(defaultApiBaseUrl)
             val phoneDebugApiBaseUrl = providers.gradleProperty("PHONE_DEBUG_API_BASE_URL")
                 .orElse(releaseApiBaseUrl)
             buildConfigField("String", "API_BASE_URL", "\"${debugApiBaseUrl.get()}\"")

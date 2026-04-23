@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,14 +26,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Badge
@@ -67,6 +67,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.finalapp.ui.component.ActionCard
 import com.example.finalapp.ui.component.GlassCard
 import com.example.finalapp.ui.localization.rememberIsTurkish
 import com.example.finalapp.ui.navigation.Screen
@@ -82,6 +83,7 @@ import com.example.finalapp.ui.theme.SuccessGreen
 import com.example.finalapp.ui.theme.TextSecondary
 import com.example.finalapp.ui.viewmodel.DashboardViewModel
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 @Composable
 fun DashboardScreen(
@@ -110,19 +112,20 @@ fun DashboardScreen(
     val bleConnected = uiState.bleConnectedLabel != "Disconnected"
     val hasBloodPressure = uiState.systolic != "--" && uiState.diastolic != "--"
     val heroSubtitle = when {
-        uiState.isLoading -> t("Refreshing latest reading", "Son olcum yenileniyor")
-        hasBloodPressure -> t("Latest reading is ready", "Son olcum hazir")
-        else -> t("Waiting for the next measurement", "Bir sonraki olcum bekleniyor")
+        uiState.isLoading -> t("Refreshing latest reading", "Son ölçüm yenileniyor")
+        hasBloodPressure -> t("Latest reading is ready", "Son ölçüm hazır")
+        else -> t("Waiting for the next measurement", "Bir sonraki ölçüm bekleniyor")
     }
     val statusValue = when {
         uiState.errorMessage != null -> t("Check now", "Kontrol et")
         hasBloodPressure -> t("Stable", "Stabil")
         else -> t("Pending", "Bekliyor")
     }
-    val bleMetricValue = if (bleConnected) t("Ready", "Hazir") else t("Offline", "Bagli degil")
+    val bleMetricValue = if (bleConnected) t("Ready", "Hazır") else t("Offline", "Bağlı değil")
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = false,
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.width(280.dp),
@@ -133,10 +136,10 @@ fun DashboardScreen(
                         .fillMaxSize()
                         .padding(24.dp)
                 ) {
-                    Text(t("Menu", "Menu"), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text(t("Navigate your health", "Sagliginda gezin"), fontSize = 12.sp, color = TextSecondary)
+                    Text(t("Menu", "Menü"), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                    Text(t("Navigate your health", "Sağlığında gezin"), fontSize = 12.sp, color = TextSecondary)
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(18.dp))
 
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         Row(
@@ -154,21 +157,20 @@ fun DashboardScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(uiState.userName, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                Text("${t("Health ID", "Saglik ID")}: ${uiState.healthId}", fontSize = 11.sp, color = TextSecondary)
+                                Text("${t("Health ID", "Sağlık ID")}: ${uiState.healthId}", fontSize = 11.sp, color = TextSecondary)
                             }
                         }
                     }
-
                     Spacer(modifier = Modifier.height(24.dp))
 
                     val menuItems = listOf(
                         Triple(t("Dashboard", "Kontrol Paneli"), Screen.Dashboard, Icons.Default.Dashboard),
-                        Triple(t("Health Status", "Saglik Durumu"), Screen.HealthStatus, Icons.Default.Security),
+                        Triple(t("Health Status", "Sağlık Durumu"), Screen.HealthStatus, Icons.Default.Security),
                         Triple(t("Trends", "Trendler"), Screen.Trends, Icons.Default.ShowChart),
                         Triple(t("Blood Pressure", "Tansiyon"), Screen.BloodPressure, Icons.Default.Favorite),
-                        Triple(t("Heart Rate", "Kalp Atisi"), Screen.Pulse, Icons.Default.Favorite),
+                        Triple(t("Heart Rate", "Kalp Atışı"), Screen.Pulse, Icons.Default.Favorite),
                         Triple(t("PPG Signal", "PPG Sinyali"), Screen.PPG, Icons.Default.Wifi),
-                        Triple(t("Measurements", "Olcumler"), Screen.Measurements, Icons.Default.History),
+                        Triple(t("Measurements", "Ölçümler"), Screen.Measurements, Icons.Default.History),
                         Triple(t("Profile", "Profil"), Screen.Profile, Icons.Default.Person),
                         Triple(t("Settings", "Ayarlar"), Screen.Settings, Icons.Default.Settings)
                     )
@@ -196,27 +198,6 @@ fun DashboardScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Button(
-                        onClick = {
-                            viewModel.logout()
-                            scope.launch { drawerState.close() }
-                            navController.navigate(Screen.Login.route) {
-                                popUpTo(Screen.Dashboard.route) { inclusive = true }
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .height(52.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ErrorRed.copy(alpha = 0.12f))
-                    ) {
-                        Icon(Icons.Default.ExitToApp, contentDescription = null, tint = ErrorRed)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(t("Logout", "Cikis Yap"), color = ErrorRed, fontWeight = FontWeight.Bold)
-                    }
                 }
             }
         }
@@ -237,66 +218,85 @@ fun DashboardScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SurfaceIconButton(
-                        onClick = { scope.launch { drawerState.open() } },
-                        backgroundColor = Color.White.copy(alpha = 0.9f)
-                    ) {
-                        Icon(Icons.Default.Menu, contentDescription = t("Menu", "Menu"), tint = PrimaryBlue, modifier = Modifier.size(24.dp))
-                    }
-
-                    Spacer(modifier = Modifier.width(14.dp))
-
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(t("Welcome back", "Tekrar hos geldin"), fontSize = 12.sp, color = TextSecondary)
+                        Text(t("Welcome back", "Tekrar hoş geldin"), fontSize = 12.sp, color = TextSecondary)
                         Text("BP Sync", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = ForegroundBlack)
                     }
 
-                    SurfaceIconButton(
-                        onClick = { navController.navigate(Screen.Notifications.route) },
-                        backgroundColor = Color.White.copy(alpha = 0.9f)
-                    ) {
-                        BadgedBox(
-                            badge = {
-                                if (uiState.unreadNotificationCount > 0) {
-                                    Badge {
-                                        Text(
-                                            text = if (uiState.unreadNotificationCount > 99) "99+" else uiState.unreadNotificationCount.toString(),
-                                            color = Color.White,
-                                            fontSize = 9.sp
-                                        )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SurfaceIconButton(
+                            onClick = { navController.navigate(Screen.Notifications.route) },
+                            backgroundColor = Color.White.copy(alpha = 0.9f)
+                        ) {
+                            BadgedBox(
+                                badge = {
+                                    if (uiState.unreadNotificationCount > 0) {
+                                        Badge {
+                                            Text(
+                                                text = if (uiState.unreadNotificationCount > 99) "99+" else uiState.unreadNotificationCount.toString(),
+                                                color = Color.White,
+                                                fontSize = 9.sp
+                                            )
+                                        }
                                     }
                                 }
+                            ) {
+                                Icon(Icons.Default.Notifications, contentDescription = t("Notifications", "Bildirimler"), tint = PrimaryBlue, modifier = Modifier.size(22.dp))
                             }
+                        }
+
+                        SurfaceIconButton(
+                            onClick = { navController.navigate(Screen.Settings.route) },
+                            backgroundColor = Color.White.copy(alpha = 0.9f)
                         ) {
-                            Icon(Icons.Default.Notifications, contentDescription = t("Notifications", "Bildirimler"), tint = PrimaryBlue, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Default.Settings, contentDescription = t("Settings", "Ayarlar"), tint = PrimaryBlue, modifier = Modifier.size(22.dp))
+                        }
+
+                        SurfaceIconButton(
+                            onClick = {
+                                viewModel.logout()
+                                navController.navigate(Screen.Login.route) {
+                                    popUpTo(Screen.Dashboard.route) { inclusive = true }
+                                }
+                            },
+                            backgroundColor = ErrorRed.copy(alpha = 0.12f)
+                        ) {
+                            Icon(
+                                Icons.Default.ExitToApp,
+                                contentDescription = t("Logout", "Çıkış Yap"),
+                                tint = ErrorRed,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
+
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))
 
                 BleOverviewCard(
-                    title = uiState.bleDeviceName,
-                    status = if (bleConnected) t("Connected and ready", "Bagli ve hazir") else t("Connection required", "Baglanti gerekiyor"),
-                    healthId = uiState.healthId,
+                    title = t("BLE Connection", "BLE Bağlantısı"),
+                    status = if (bleConnected) t("Connected", "Bağlı") else t("Not connected", "Bağlı değil"),
+                    deviceInfo = uiState.bleDeviceName,
                     bleConnected = bleConnected,
                     onManageClick = { navController.navigate(Screen.BLEConnection.route) }
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 HeroMeasurementCard(
-                    title = t("Blood Pressure", "Tansiyon"),
+                    title = t("Your latest reading", "Senin en son ölçümün"),
                     subtitle = heroSubtitle,
                     readingValue = "${uiState.systolic}/${uiState.diastolic}",
-                    buttonLabel = if (uiState.isLoading) t("Refreshing", "Yenileniyor") else t("Refresh Latest Measurement", "Son Olcumu Yenile"),
-                    onButtonClick = viewModel::showLatestMeasurement
+                    buttonLabel = if (uiState.isLoading) t("Refreshing", "Yenileniyor") else t("Refresh", "Yenile"),
+                    onButtonClick = viewModel::showLatestMeasurement,
+                    isTurkish = isTurkish
                 )
 
                 Spacer(modifier = Modifier.height(18.dp))
 
                 SectionHeader(
-                    title = t("Vital Values", "Vital Degerler"),
+                    title = t("Vital Values", "Vital Değerler"),
                     actionLabel = t("Details", "Detaylar"),
                     onAction = { navController.navigate(Screen.BloodPressure.route) }
                 )
@@ -308,24 +308,14 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     MetricCard(
-                        modifier = Modifier.weight(1f),
-                        title = t("Pulse", "Nabiz"),
+                        modifier = Modifier.fillMaxWidth(),
+                        title = t("Pulse", "Nabız"),
                         value = uiState.pulse,
                         subtitle = "bpm",
                         icon = Icons.Default.Favorite,
                         backgroundColor = PrimaryBlue,
                         valueColor = Color.White,
                         metaColor = Color.White.copy(alpha = 0.7f)
-                    )
-                    MetricCard(
-                        modifier = Modifier.weight(1f),
-                        title = "SpO2",
-                        value = uiState.spo2,
-                        subtitle = "%",
-                        icon = Icons.Default.SettingsInputAntenna,
-                        backgroundColor = Color.White.copy(alpha = 0.96f),
-                        valueColor = ForegroundBlack,
-                        metaColor = TextSecondary
                     )
                 }
 
@@ -339,22 +329,11 @@ fun DashboardScreen(
                         modifier = Modifier.weight(1f),
                         title = t("Status", "Durum"),
                         value = statusValue,
-                        subtitle = t("health track", "takip durumu"),
+                        subtitle = t("Tracking status", "Takip durumu"),
                         icon = Icons.Default.Security,
                         backgroundColor = Color(0xFFEEF3FF),
                         valueColor = ForegroundBlack,
                         metaColor = TextSecondary,
-                        compact = true
-                    )
-                    MetricCard(
-                        modifier = Modifier.weight(1f),
-                        title = "BLE",
-                        value = bleMetricValue,
-                        subtitle = t("wrist + chest", "wrist + chest"),
-                        icon = Icons.Default.Bluetooth,
-                        backgroundColor = ForegroundBlack,
-                        valueColor = Color.White,
-                        metaColor = Color.White.copy(alpha = 0.56f),
                         compact = true
                     )
                 }
@@ -376,60 +355,28 @@ fun DashboardScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                SectionHeader(title = t("Quick Access", "Hizli Erisim"))
+                SectionHeader(title = t("Quick Access", "Hızlı Erişim"))
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Row(
+                QuickAccessCard(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    QuickAccessCard(
-                        modifier = Modifier.weight(1f),
-                        title = t("Trends", "Trendler"),
-                        subtitle = t("View history", "Gecmisi gor"),
-                        icon = Icons.Default.ShowChart,
-                        iconColor = PurpleMain,
-                        backgroundColor = Color.White.copy(alpha = 0.96f),
-                        onClick = { navController.navigate(Screen.Trends.route) }
-                    )
-                    QuickAccessCard(
-                        modifier = Modifier.weight(1f),
-                        title = t("Health", "Saglik"),
-                        subtitle = t("Check status", "Durumu gor"),
-                        icon = Icons.Default.Security,
-                        iconColor = SuccessGreen,
-                        backgroundColor = Color(0xFFEEF3FF),
-                        onClick = { navController.navigate(Screen.HealthStatus.route) }
-                    )
-                }
+                    title = t("Measurements", "Ölçümler"),
+                    subtitle = t("All records", "Tüm kayıtlar"),
+                    icon = Icons.Default.History,
+                    iconColor = ActivePink,
+                    backgroundColor = Color.White.copy(alpha = 0.96f),
+                    onClick = { navController.navigate(Screen.Measurements.route) }
+                )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    QuickAccessCard(
-                        modifier = Modifier.weight(1f),
-                        title = t("PPG Signal", "PPG Sinyali"),
-                        subtitle = t("Real time", "Canli izleme"),
-                        icon = Icons.Default.Wifi,
-                        iconColor = OrangeMain,
-                        backgroundColor = ForegroundBlack,
-                        contentColor = Color.White,
-                        onClick = { navController.navigate(Screen.PPG.route) }
-                    )
-                    QuickAccessCard(
-                        modifier = Modifier.weight(1f),
-                        title = t("Measurements", "Olcumler"),
-                        subtitle = t("All records", "Tum kayitlar"),
-                        icon = Icons.Default.History,
-                        iconColor = ActivePink,
-                        backgroundColor = Color.White.copy(alpha = 0.96f),
-                        onClick = { navController.navigate(Screen.Measurements.route) }
-                    )
-                }
+                BottomUtilityCard(
+                    navController = navController,
+                    isTurkish = isTurkish
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
 
             }
         }
@@ -453,13 +400,121 @@ private fun SurfaceIconButton(
 }
 
 @Composable
+private fun BottomUtilityCard(
+    navController: NavController,
+    isTurkish: Boolean
+) {
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
+
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                ActionCard(
+                    modifier = Modifier.weight(1f),
+                    title = t("PPG Signal", "PPG Sinyali"),
+                    subtitle = t("Live monitoring", "Canlı izleme"),
+                    icon = Icons.Default.Wifi,
+                    color = OrangeMain,
+                    onClick = { navController.navigate(Screen.PPG.route) }
+                )
+                ActionCard(
+                    modifier = Modifier.weight(1f),
+                    title = t("Heart Rate", "Nabız"),
+                    subtitle = t("Instant measurement", "Anlık ölçüm"),
+                    icon = Icons.Default.Favorite,
+                    color = SuccessGreen,
+                    onClick = { navController.navigate(Screen.Pulse.route) }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            ActionCard(
+                modifier = Modifier.fillMaxWidth(),
+                title = t("Settings", "Ayarlar"),
+                subtitle = t("App settings", "Uygulama ayarları"),
+                icon = Icons.Default.Settings,
+                color = PurpleMain,
+                onClick = { navController.navigate(Screen.Settings.route) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun MoreMenuCard(
+    navController: NavController,
+    isTurkish: Boolean
+) {
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
+
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(t("Other Screens", "Diğer Ekranlar"), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
+                Text(t("Shortcuts", "Kısayollar"), fontSize = 12.sp, color = TextSecondary)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                ActionCard(
+                    modifier = Modifier.weight(1f),
+                    title = t("Blood Pressure", "Tansiyon"),
+                    subtitle = t("Details screen", "Detay ekranı"),
+                    icon = Icons.Default.Favorite,
+                    color = ErrorRed,
+                    onClick = { navController.navigate(Screen.BloodPressure.route) }
+                )
+                ActionCard(
+                    modifier = Modifier.weight(1f),
+                    title = t("Pulse", "Nabız"),
+                    subtitle = t("Live data", "Canlı veri"),
+                    icon = Icons.Default.Favorite,
+                    color = SuccessGreen,
+                    onClick = { navController.navigate(Screen.Pulse.route) }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                ActionCard(
+                    modifier = Modifier.weight(1f),
+                    title = t("Profile", "Profil"),
+                    subtitle = t("Your info", "Bilgilerin"),
+                    icon = Icons.Default.Person,
+                    color = PrimaryBlue,
+                    onClick = { navController.navigate(Screen.Profile.route) }
+                )
+                ActionCard(
+                    modifier = Modifier.weight(1f),
+                    title = t("Settings", "Ayarlar"),
+                    subtitle = t("App settings", "Uygulama ayarları"),
+                    icon = Icons.Default.Settings,
+                    color = PurpleMain,
+                    onClick = { navController.navigate(Screen.Settings.route) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun HeroMeasurementCard(
     title: String,
     subtitle: String,
     readingValue: String,
     buttonLabel: String,
-    onButtonClick: () -> Unit
+    onButtonClick: () -> Unit,
+    isTurkish: Boolean
 ) {
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -481,7 +536,7 @@ private fun HeroMeasurementCard(
 
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
-                "Dashboard",
+                t("Latest Reading", "Son Ölçüm"),
                 fontSize = 11.sp,
                 color = Color.White.copy(alpha = 0.82f),
                 modifier = Modifier
@@ -522,7 +577,7 @@ private fun HeroMeasurementCard(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp),
                         horizontalAlignment = Alignment.End
                     ) {
-                        Text("Latest", fontSize = 12.sp, color = TextSecondary, maxLines = 1, softWrap = false)
+                        Text(t("Latest", "Son"), fontSize = 12.sp, color = TextSecondary, maxLines = 1, softWrap = false)
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             readingValue,
@@ -624,10 +679,14 @@ private fun MetricCard(
 private fun BleOverviewCard(
     title: String,
     status: String,
-    healthId: String,
+    deviceInfo: String,
     bleConnected: Boolean,
     onManageClick: () -> Unit
 ) {
+    val isTurkish = rememberIsTurkish()
+
+    fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
+
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(
@@ -670,14 +729,18 @@ private fun BleOverviewCard(
                     ),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                 ) {
-                    Text("Yonet", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text(
+                        if (bleConnected) t("Open BLE", "BLE Aç") else t("Connect BLE", "BLE Bağla"),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                healthId,
+                deviceInfo,
                 fontSize = 11.sp,
                 color = TextSecondary,
                 maxLines = 2,
@@ -687,7 +750,7 @@ private fun BleOverviewCard(
             Spacer(modifier = Modifier.height(12.dp))
 
             InfoChip(
-                text = if (bleConnected) "BLE Bagli" else "BLE Cevrimdisi",
+                text = if (bleConnected) t("BLE Connected", "BLE Bağlı") else t("BLE Disconnected", "BLE Çevrimdışı"),
                 color = if (bleConnected) SuccessGreen else ErrorRed
             )
         }

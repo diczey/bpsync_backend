@@ -22,7 +22,6 @@ data class DashboardUiState(
     val systolic: String = "--",
     val diastolic: String = "--",
     val pulse: String = "--",
-    val spo2: String = "--",
     val bleDeviceName: String = "Wrist + Chest",
     val bleConnectedLabel: String = "Disconnected",
     val unreadNotificationCount: Int = 0,
@@ -60,7 +59,6 @@ class DashboardViewModel(
                             systolic = summary.latestSystolic.takeIf { it > 0 }?.toString() ?: "--",
                             diastolic = summary.latestDiastolic.takeIf { it > 0 }?.toString() ?: "--",
                             pulse = summary.latestHeartRate.takeIf { it > 0 }?.toString() ?: "--",
-                            spo2 = summary.latestSpo2.takeIf { it > 0 }?.toString() ?: "--",
                             isLoading = false,
                             errorMessage = null
                         )
@@ -80,6 +78,10 @@ class DashboardViewModel(
                     }
                 }
             }
+
+            // If we already have a freshly recorded local measurement, keep it on top
+            // of the backend summary so the dashboard reflects the measurement button.
+            hydrateFromLocalReading()
 
             when (val bleResult = bleRepository.fetchBleStatus()) {
                 is RepositoryResult.Success -> {
@@ -143,8 +145,7 @@ class DashboardViewModel(
             it.copy(
                 systolic = latest.systolic,
                 diastolic = latest.diastolic,
-                pulse = latest.pulse,
-                spo2 = latest.spo2
+                pulse = latest.pulse
             )
         }
     }
@@ -182,8 +183,7 @@ class DashboardViewModel(
                     it.copy(
                         systolic = latest.systolic,
                         diastolic = latest.diastolic,
-                        pulse = latest.pulse,
-                        spo2 = latest.spo2
+                        pulse = latest.pulse
                     )
                 }
             }

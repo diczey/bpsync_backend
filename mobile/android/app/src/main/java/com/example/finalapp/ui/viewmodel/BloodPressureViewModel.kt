@@ -4,8 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.model.TrendDataPoint
 import com.example.finalapp.data.repository.RepositoryResult
+import com.example.finalapp.data.repository.ReadingRepository
 import com.example.finalapp.data.repository.TrendsRepository
 import com.example.finalapp.data.repository.DashboardRepository
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +41,7 @@ class BloodPressureViewModel(
     val uiState: StateFlow<BloodPressureUiState> = _uiState.asStateFlow()
 
     init {
+        observeReadings()
         loadData()
     }
 
@@ -53,9 +56,9 @@ class BloodPressureViewModel(
             val dashboardResult = dashboardDeferred.await()
             val trendsResult = trendsDeferred.await()
 
-            val latestSys: Int
-            val latestDia: Int
-            val status: String
+            var latestSys: Int
+            var latestDia: Int
+            var status: String
 
             if (dashboardResult is RepositoryResult.Success) {
                 val summary = dashboardResult.data
@@ -66,6 +69,17 @@ class BloodPressureViewModel(
                 latestSys = 0
                 latestDia = 0
                 status = "No Data"
+            }
+
+            // Prefer the newest reading captured locally by the measurement flow.
+            ReadingRepository.latestReading()?.let { localLatest ->
+                val localSys = localLatest.systolic.toIntOrNull()
+                val localDia = localLatest.diastolic.toIntOrNull()
+                if (localSys != null && localDia != null && localSys > 0 && localDia > 0) {
+                    latestSys = localSys
+                    latestDia = localDia
+                    status = localLatest.status
+                }
             }
 
             var avgSys = 0f
@@ -130,4 +144,63 @@ class BloodPressureViewModel(
             }
         }
     }
+
+    private fun observeReadings() {
+        viewModelScope.launch {
+            ReadingRepository.readings.collectLatest { readings ->
+                val latest = readings.firstOrNull() ?: return@collectLatest
+                val latestSys = latest.systolic.toIntOrNull() ?: return@collectLatest
+                val latestDia = latest.diastolic.toIntOrNull() ?: return@collectLatest
+                val timestamp = latest.timestamp
+
+                _uiState.update { current ->
+                    val updatedSysPoints = appendTrendPoint(current.sysTrendPoints, timestamp, latestSys.toFloat())
+                    val updatedDiaPoints = appendTrendPoint(current.diaTrendPoints, timestamp, latestDia.toFloat())
+
+                    current.copy(
+                        latestSystolic = latestSys,
+                        latestDiastolic = latestDia,
+                        statusLabel = latest.status,
+                        avgSystolic = averageOf(updatedSysPoints),
+                        avgDiastolic = averageOf(updatedDiaPoints),
+                        sysTrendPoints = updatedSysPoints,
+                        diaTrendPoints = updatedDiaPoints,
+                        sysTrendMin = minBoundOf(updatedSysPoints),
+                        sysTrendMax = maxBoundOf(updatedSysPoints),
+                        diaTrendMin = minBoundOf(updatedDiaPoints),
+                        diaTrendMax = maxBoundOf(updatedDiaPoints)
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun appendTrendPoint(
+    points: List<TrendDataPoint>,
+    timestamp: Long,
+    value: Float
+): List<TrendDataPoint> {
+    val normalizedTimestamp = if (timestamp < 1_000_000_000_000L) timestamp * 1000 else timestamp
+    val updated = points.filterNot { point ->
+        val pointTimestamp = if (point.timestamp < 1_000_000_000_000L) point.timestamp * 1000 else point.timestamp
+        pointTimestamp == normalizedTimestamp
+    } + TrendDataPoint(timestamp = normalizedTimestamp, value = value)
+
+    return updated.sortedBy { it.timestamp }
+}
+
+private fun averageOf(points: List<TrendDataPoint>): Float {
+    if (points.isEmpty()) return 0f
+    return points.map { it.value }.average().toFloat()
+}
+
+private fun minBoundOf(points: List<TrendDataPoint>): Float {
+    val minValue = points.minOfOrNull { it.value } ?: 0f
+    return if (minValue > 0f) minValue * 0.95f else 0f
+}
+
+private fun maxBoundOf(points: List<TrendDataPoint>): Float {
+    val maxValue = points.maxOfOrNull { it.value } ?: 1f
+    return if (maxValue > 0f) maxValue * 1.05f else 1f
 }

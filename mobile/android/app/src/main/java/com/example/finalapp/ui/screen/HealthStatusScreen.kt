@@ -293,11 +293,6 @@ fun HealthStatusScreen(
                         status = translateStatus(uiState.heartRateStatus, isTurkish),
                         color = statusColor(uiState.heartRateStatus)
                     )
-                    StatusRow(
-                        label = t("Oxygen Level", "Oksijen Seviyesi"),
-                        status = translateStatus(uiState.oxygenStatus, isTurkish),
-                        color = statusColor(uiState.oxygenStatus)
-                    )
                 }
             }
 

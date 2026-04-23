@@ -144,7 +144,6 @@ fun TrendsScreen(
             val sysTrend = uiState.trends.find { it.type == "systolic" }
             val diaTrend = uiState.trends.find { it.type == "diastolic" }
             val hrTrend = uiState.trends.find { it.type == "heart_rate" }
-            val spo2Trend = uiState.trends.find { it.type == "spo2" }
 
             // Trend Charts
             TrendChartSection(title = t("Systolic Pressure", "Sistolik Basınç"), icon = Icons.Default.Favorite, color = ErrorRed, unit = "mmHg", trend = sysTrend, isTurkish = isTurkish)
@@ -152,9 +151,6 @@ fun TrendsScreen(
             TrendChartSection(title = t("Diastolic Pressure", "Diyastolik Basınç"), icon = Icons.Default.FavoriteBorder, color = OrangeMain, unit = "mmHg", trend = diaTrend, isTurkish = isTurkish)
             Spacer(modifier = Modifier.height(20.dp))
             TrendChartSection(title = t("Heart Rate", "Kalp Atışı"), icon = Icons.Default.FavoriteBorder, color = ActivePink, unit = "BPM", trend = hrTrend, isTurkish = isTurkish)
-            Spacer(modifier = Modifier.height(20.dp))
-            TrendChartSection(title = t("Oxygen Level", "Oksijen Seviyesi"), icon = Icons.Default.SettingsInputAntenna, color = PrimaryBlue, unit = "%", trend = spo2Trend, isTurkish = isTurkish)
-
             Spacer(modifier = Modifier.height(40.dp))
         }
     }

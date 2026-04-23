@@ -115,6 +115,8 @@ private object AndroidBleManager {
     private const val MAX_BUFFERED_FRAMES = 80
     private const val CHEST_PACKET_SIZE = 24
     private const val CHEST_ECG_BATCH_SIZE = 10
+    private const val RECONNECT_DELAY_MS = 1_500L
+    private const val MAX_RECONNECT_ATTEMPTS = 3
 
     private val WRIST_SERVICE_UUID: UUID = UUID.fromString("19B10000-E8F2-537E-4F6C-D104768A1214")
     private val WRIST_DATA_UUID: UUID = UUID.fromString("19B10001-E8F2-537E-4F6C-D104768A1214")
@@ -149,6 +151,9 @@ private object AndroidBleManager {
 
     private var appContext: Context? = null
     private var activeScanCallback: ScanCallback? = null
+    private val reconnectRunnables = mutableMapOf<BleDeviceRole, Runnable>()
+    private val reconnectAttempts = mutableMapOf<BleDeviceRole, Int>()
+    private val manualDisconnectRoles = mutableSetOf<BleDeviceRole>()
 
     private var measurementStreaming = false
     private var framesReceived = 0
@@ -262,7 +267,18 @@ private object AndroidBleManager {
 
     @SuppressLint("MissingPermission")
     suspend fun connect(context: Context, device: BleDevice): RepositoryResult<String> {
+        return connectInternal(context, device, isReconnect = false)
+    }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun connectInternal(
+        context: Context,
+        device: BleDevice,
+        isReconnect: Boolean
+    ): RepositoryResult<String> {
         initialize(context)
+        cancelPendingReconnect(device.role, resetAttempts = !isReconnect)
+        manualDisconnectRoles.remove(device.role)
 
         if (device.role == BleDeviceRole.UNKNOWN) {
             return RepositoryResult.Error("Please choose a Wrist or Chest device.")
@@ -279,7 +295,9 @@ private object AndroidBleManager {
         val remoteDevice = runCatching { adapter.getRemoteDevice(device.address) }.getOrNull()
             ?: return RepositoryResult.Error("Couldn't resolve the selected Bluetooth device.")
 
-        disconnectSession(device.role, clearMeasurementState = false)
+        if (!isReconnect) {
+            disconnectSession(device.role, clearMeasurementState = false, markManual = false)
+        }
 
         val session = sessions.getValue(device.role)
 
@@ -317,6 +335,8 @@ private object AndroidBleManager {
                             session.device = device
                             session.connectedAt = currentTimestamp()
                             session.mtu = 23
+                            cancelPendingReconnect(device.role, resetAttempts = true)
+                            lastError = null
                             publishStatus()
                             scope.launch {
                                 notifyMobileConnected(device)
@@ -339,8 +359,13 @@ private object AndroidBleManager {
                         }
 
                         newState == BluetoothProfile.STATE_DISCONNECTED -> {
+                            val isCurrentSession = session.gatt == gattInstance
+                            val shouldReconnect = completed &&
+                                isCurrentSession &&
+                                !manualDisconnectRoles.remove(device.role)
+
                             runCatching { gattInstance.close() }
-                            if (session.gatt == gattInstance) {
+                            if (isCurrentSession) {
                                 clearSession(session)
                             }
                             if (!bothDevicesConnected()) {
@@ -349,6 +374,9 @@ private object AndroidBleManager {
                             publishStatus()
                             scope.launch {
                                 notifyMobileDisconnected(device)
+                            }
+                            if (shouldReconnect) {
+                                scheduleReconnect(device)
                             }
                             if (!completed) {
                                 val message = if (status == BluetoothGatt.GATT_SUCCESS) {
@@ -561,10 +589,50 @@ private object AndroidBleManager {
 
     @SuppressLint("MissingPermission")
     fun disconnect() {
-        disconnectSession(BleDeviceRole.WRIST, clearMeasurementState = false)
-        disconnectSession(BleDeviceRole.CHEST, clearMeasurementState = false)
+        disconnectSession(BleDeviceRole.WRIST, clearMeasurementState = false, markManual = true)
+        disconnectSession(BleDeviceRole.CHEST, clearMeasurementState = false, markManual = true)
         invalidateUploadSession(clearBuffers = true)
         publishStatus()
+    }
+
+    private fun cancelPendingReconnect(role: BleDeviceRole, resetAttempts: Boolean) {
+        reconnectRunnables.remove(role)?.let(mainHandler::removeCallbacks)
+        if (resetAttempts) {
+            reconnectAttempts.remove(role)
+        }
+    }
+
+    private fun scheduleReconnect(device: BleDevice) {
+        val context = appContext ?: return
+        val attempts = reconnectAttempts[device.role] ?: 0
+        if (attempts >= MAX_RECONNECT_ATTEMPTS) {
+            cancelPendingReconnect(device.role, resetAttempts = true)
+            updateLastError("${roleLabel(device.role)} disconnected and couldn't reconnect automatically.")
+            return
+        }
+
+        val nextAttempt = attempts + 1
+        reconnectAttempts[device.role] = nextAttempt
+        cancelPendingReconnect(device.role, resetAttempts = false)
+
+        val reconnectRunnable = Runnable {
+            reconnectRunnables.remove(device.role)
+            scope.launch {
+                when (connectInternal(context, device, isReconnect = true)) {
+                    is RepositoryResult.Success -> {
+                        cancelPendingReconnect(device.role, resetAttempts = true)
+                    }
+
+                    is RepositoryResult.Error -> {
+                        scheduleReconnect(device)
+                    }
+                }
+            }
+        }
+
+        reconnectRunnables[device.role] = reconnectRunnable
+        updateLastError("${roleLabel(device.role)} disconnected. Reconnecting ($nextAttempt/$MAX_RECONNECT_ATTEMPTS)...")
+        mainHandler.postDelayed(reconnectRunnable, RECONNECT_DELAY_MS)
     }
 
     private fun bluetoothAdapter(): BluetoothAdapter? {
@@ -574,8 +642,16 @@ private object AndroidBleManager {
     }
 
     @SuppressLint("MissingPermission")
-    private fun disconnectSession(role: BleDeviceRole, clearMeasurementState: Boolean) {
+    private fun disconnectSession(
+        role: BleDeviceRole,
+        clearMeasurementState: Boolean,
+        markManual: Boolean
+    ) {
         val session = sessions[role] ?: return
+        if (markManual) {
+            manualDisconnectRoles.add(role)
+        }
+        cancelPendingReconnect(role, resetAttempts = markManual)
         runCatching {
             session.gatt?.disconnect()
             session.gatt?.close()
@@ -996,11 +1072,7 @@ private object AndroidBleManager {
                     }
                     if (body.readingCreated) {
                         measurementsReady += 1
-                        body.reading?.let { reading ->
-                            ReadingRepository.upsertFromBleInference(reading)
-                        } ?: run {
-                            ReadingRepository.syncFromApi()
-                        }
+                        ReadingRepository.syncFromApi()
                     }
                     publishStatus()
                 } else {

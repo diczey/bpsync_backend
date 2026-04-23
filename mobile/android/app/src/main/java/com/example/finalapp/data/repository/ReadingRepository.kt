@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class Reading(
     val id: Int,
+    val timestamp: Long,
     val systolic: String,
     val diastolic: String,
     val pulse: String,
@@ -30,13 +31,15 @@ object ReadingRepository {
     }
 
     fun addReading(systolic: String, diastolic: String, pulse: String, spo2: String) {
+        val now = System.currentTimeMillis()
         val sdfDate = SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault())
         val sdfTime = SimpleDateFormat("hh:mm a", Locale.getDefault())
-        val currentDate = sdfDate.format(Date())
-        val currentTime = sdfTime.format(Date())
+        val currentDate = sdfDate.format(Date(now))
+        val currentTime = sdfTime.format(Date(now))
 
         val reading = Reading(
             id = (_readings.value.maxOfOrNull { it.id } ?: 0) + 1,
+            timestamp = now,
             systolic = systolic,
             diastolic = diastolic,
             pulse = pulse,
@@ -46,7 +49,7 @@ object ReadingRepository {
             status = resolveStatus(systolic, diastolic)
         )
 
-        _readings.value = listOf(reading) + _readings.value
+        _readings.value = (listOf(reading) + _readings.value).sortedByDescending { it.timestamp }
     }
 
     fun upsertFromBleInference(reading: BleInferredReadingDto) {
@@ -57,6 +60,7 @@ object ReadingRepository {
 
         val mapped = Reading(
             id = "ble-${reading.timestamp}".hashCode(),
+            timestamp = timestamp,
             systolic = reading.systolic.takeIf { it > 0 }?.toString() ?: "--",
             diastolic = reading.diastolic.takeIf { it > 0 }?.toString() ?: "--",
             pulse = reading.heartRate.takeIf { it > 0 }?.toString() ?: "--",
@@ -68,7 +72,8 @@ object ReadingRepository {
             }
         )
 
-        _readings.value = listOf(mapped) + _readings.value.filterNot { it.id == mapped.id }
+        _readings.value = (listOf(mapped) + _readings.value.filterNot { it.id == mapped.id })
+            .sortedByDescending { it.timestamp }
     }
 
     suspend fun syncFromApi(apiService: ApiService = ApiClient.apiService): RepositoryResult<List<Reading>> {
@@ -102,6 +107,13 @@ object ReadingRepository {
 
     fun latestReading(): Reading? = _readings.value.firstOrNull()
 
+    fun latestKnownSpo2(): String? {
+        return _readings.value
+            .firstNotNullOfOrNull { reading ->
+                reading.spo2.toIntOrNull()?.takeIf { it > 0 }?.toString()
+            }
+    }
+
     private fun mapToReading(dto: HealthReadingDto): Reading {
         val timestamp = normalizeTimestamp(dto.timestamp)
         val date = Date(timestamp)
@@ -112,6 +124,7 @@ object ReadingRepository {
 
         return Reading(
             id = dto.id.hashCode(),
+            timestamp = timestamp,
             systolic = systolic,
             diastolic = diastolic,
             pulse = displayValue(dto.heartRate),
