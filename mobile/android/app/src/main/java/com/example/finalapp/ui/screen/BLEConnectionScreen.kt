@@ -217,6 +217,33 @@ fun BLEConnectionScreen(
                         lastError = uiState.lastBleError
                     )
 
+                    uiState.lastMeasurement?.let { result ->
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(SuccessGreen.copy(alpha = 0.12f))
+                                .border(1.dp, SuccessGreen.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                                .padding(14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                t("Latest BP Result", "Son BP Sonucu"),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SuccessGreen
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                result,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ForegroundBlack
+                            )
+                        }
+                    }
+
                     uiState.errorMessage?.let { error ->
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(text = translateMessage(error, isTurkish), color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
