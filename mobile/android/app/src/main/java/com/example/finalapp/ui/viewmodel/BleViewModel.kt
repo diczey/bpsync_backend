@@ -6,8 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.repository.BleDevice
 import com.example.finalapp.data.repository.BleDeviceRole
 import com.example.finalapp.data.repository.BleRepository
+import com.example.finalapp.data.repository.ReadingRepository
 import com.example.finalapp.data.repository.RepositoryResult
 import com.example.finalapp.ui.localization.isTurkishSelected
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,7 +43,8 @@ data class BleUiState(
     val measurementsReady: Int = 0,
     val bufferFill: String = "0/25",
     val lastSeq: Int = 0,
-    val lastBleError: String? = null
+    val lastBleError: String? = null,
+    val lastMeasurement: String? = null
 )
 
 class BleViewModel(application: Application) : AndroidViewModel(application) {
@@ -148,6 +151,11 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                     refreshStatus()
+                    // Wait for backend CNN inference to complete, then fetch results
+                    launch {
+                        delay(3500L)
+                        ReadingRepository.syncFromApi()
+                    }
                 }
 
                 is RepositoryResult.Error -> {
@@ -415,7 +423,8 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                 measurementsReady = dataStats.intValue("measurements_ready"),
                 bufferFill = dataStats.stringValue("buffer_fill", "0/25"),
                 lastSeq = dataStats.intValue("last_seq"),
-                lastBleError = lastBleError
+                lastBleError = lastBleError,
+                lastMeasurement = dataStats.stringValueOrNull("last_measurement")
             )
         }
     }
