@@ -3,11 +3,13 @@ package com.example.finalapp.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.model.TrendDataDto
+import com.example.finalapp.data.repository.ReadingRepository
 import com.example.finalapp.data.repository.RepositoryResult
 import com.example.finalapp.data.repository.TrendsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -28,6 +30,24 @@ class TrendsViewModel(
 
     init {
         loadTrends("week")
+        observeNewReadings()
+    }
+
+    private fun observeNewReadings() {
+        viewModelScope.launch {
+            var prevCount = ReadingRepository.readings.value.size
+            ReadingRepository.readings.collect { readings ->
+                if (readings.size > prevCount) {
+                    prevCount = readings.size
+                    val backendPeriod = when (_uiState.value.selectedPeriod) {
+                        "Daily" -> "day"
+                        "Monthly" -> "month"
+                        else -> "week"
+                    }
+                    loadTrends(backendPeriod)
+                }
+            }
+        }
     }
 
     fun setPeriod(period: String) {
