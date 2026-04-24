@@ -274,12 +274,13 @@ class DataManager:
         if state is None:
             return
 
+        now_ms = int(time.time() * 1000)
         state.window = deque(maxlen=self._window_target_for_mode("legacy"))
         state.mode = "legacy"
         state.db_buffer_fill = f"0/{WAVEFORM_WINDOW_FRAMES}"
-        state.last_synced_wrist_received_at_ms = 0
-        state.last_synced_chest_received_at_ms = 0
-        logger.info("DataManager stream reset for %s", user_id)
+        state.last_synced_wrist_received_at_ms = now_ms
+        state.last_synced_chest_received_at_ms = now_ms
+        logger.info("DataManager stream reset for %s (watermark=%d)", user_id, now_ms)
 
     def get_stats(self, user_id: Optional[str] = None):
         if user_id:
@@ -909,32 +910,43 @@ class DataManager:
         if not wrist_rows or not chest_rows:
             return []
 
-        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
-        chest_index = 0
-        for wrist in wrist_rows:
-            best_index: Optional[int] = None
-            best_score: Optional[tuple[int, int, int]] = None
+        # Build seq → chest_row index for O(1) exact seq lookup
+        chest_by_seq: dict[int, int] = {}
+        for idx, chest_row in enumerate(chest_rows):
+            seq = chest_row.get("sq", -1)
+            if seq >= 0 and seq not in chest_by_seq:
+                chest_by_seq[seq] = idx
 
-            for idx in range(chest_index, len(chest_rows)):
-                chest_row = chest_rows[idx]
-                wrist_ts, chest_ts, clock_priority, tolerance_ms = cls._pair_timestamps_ms(wrist, chest_row)
-                delta = abs(chest_ts - wrist_ts)
-                if delta > tolerance_ms:
+        used_chest: set[int] = set()
+        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+        for wrist in wrist_rows:
+            wrist_seq = wrist.get("sq", -1)
+
+            # 1. Exact seq match — always preferred
+            if wrist_seq >= 0 and wrist_seq in chest_by_seq:
+                chest_idx = chest_by_seq[wrist_seq]
+                if chest_idx not in used_chest:
+                    used_chest.add(chest_idx)
+                    pairs.append((wrist, chest_rows[chest_idx]))
                     continue
 
-                seq_delta = cls._row_seq_distance(wrist, chest_row)
-                score = (delta, seq_delta, clock_priority)
-                if best_score is None or score < best_score:
-                    best_score = score
+            # 2. Timestamp fallback — wider tolerance to handle upload jitter
+            best_index: Optional[int] = None
+            best_delta = float("inf")
+            for idx, chest_row in enumerate(chest_rows):
+                if idx in used_chest:
+                    continue
+                wrist_ts, chest_ts, _, tolerance_ms = cls._pair_timestamps_ms(wrist, chest_row)
+                # Use 2× tolerance to compensate for async upload delays
+                delta = abs(chest_ts - wrist_ts)
+                if delta <= tolerance_ms * 2 and delta < best_delta:
+                    best_delta = delta
                     best_index = idx
 
-            if best_index is None:
-                continue
-
-            pairs.append((wrist, chest_rows[best_index]))
-            chest_index = best_index + 1
-            if chest_index >= len(chest_rows):
-                break
+            if best_index is not None:
+                used_chest.add(best_index)
+                pairs.append((wrist, chest_rows[best_index]))
 
         return pairs
 
