@@ -882,7 +882,7 @@ class DataManager:
                 grouped[seq_num] = item
 
             ecg_value = row.get("ecg_value")
-            if ecg_value is not None:
+            if ecg_value is not None and len(item["ecg"]) < 10:
                 item["ecg"].append(float(ecg_value))
             item["ep"] = max(item["ep"], self._coerce_flag(row.get("ep", 0)))
             item["qi_c"] = max(item["qi_c"], self._coerce_flag(row.get("qi_c", 0)))

@@ -445,7 +445,10 @@ private object AndroidBleManager {
                     gattInstance: BluetoothGatt,
                     characteristic: BluetoothGattCharacteristic
                 ) {
-                    handleNotification(session.role, characteristic.value ?: ByteArray(0))
+                    // Only handle on pre-API33 devices — API33+ uses the value overload below
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                        handleNotification(session.role, characteristic.value ?: ByteArray(0))
+                    }
                 }
 
                 override fun onCharacteristicChanged(
