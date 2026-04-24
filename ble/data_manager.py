@@ -350,6 +350,8 @@ class DataManager:
 
     @staticmethod
     def _min_quality_frames(total_frames: int) -> int:
+        if MIN_QUALITY_RATIO <= 0.0:
+            return 0
         return max(1, math.ceil(total_frames * MIN_QUALITY_RATIO))
 
     @staticmethod
