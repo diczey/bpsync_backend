@@ -303,16 +303,31 @@ fun DashboardScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                MetricCard(
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    title = t("Heart Rate", "Kalp Atışı"),
-                    value = uiState.pulse,
-                    subtitle = "bpm",
-                    icon = Icons.Default.Favorite,
-                    backgroundColor = PrimaryBlue,
-                    valueColor = Color.White,
-                    metaColor = Color.White.copy(alpha = 0.7f)
-                )
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    MetricCard(
+                        modifier = Modifier.weight(1f),
+                        title = t("Pulse", "Nabiz"),
+                        value = uiState.pulse,
+                        subtitle = "bpm",
+                        icon = Icons.Default.Favorite,
+                        backgroundColor = PrimaryBlue,
+                        valueColor = Color.White,
+                        metaColor = Color.White.copy(alpha = 0.7f)
+                    )
+                    MetricCard(
+                        modifier = Modifier.weight(1f),
+                        title = "SpO2",
+                        value = uiState.spo2,
+                        subtitle = "%",
+                        icon = Icons.Default.SettingsInputAntenna,
+                        backgroundColor = Color.White.copy(alpha = 0.96f),
+                        valueColor = ForegroundBlack,
+                        metaColor = TextSecondary
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 

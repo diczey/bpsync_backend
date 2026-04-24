@@ -12,12 +12,12 @@ import com.example.finalapp.ui.localization.isTurkishSelected
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 data class BleUiState(
     val scanning: Boolean = false,
@@ -153,7 +153,6 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                     refreshStatus()
-                    // Wait for backend CNN inference to complete, then fetch results
                     launch {
                         delay(3500L)
                         ReadingRepository.syncFromApi()
@@ -335,31 +334,17 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
     private fun refreshModelInfo() {
         viewModelScope.launch {
             try {
-                val result = withTimeout(5000L) {
-                    bleRepository.fetchPredictionModelInfo()
-                }
+                val result = withTimeout(5000L) { bleRepository.fetchPredictionModelInfo() }
                 when (result) {
-                    is RepositoryResult.Success -> {
-                        _uiState.update {
-                            it.copy(
-                                activeModelLabel = result.data.activeModelLabel,
-                                modelMessage = result.data.message
-                            )
-                        }
+                    is RepositoryResult.Success -> _uiState.update {
+                        it.copy(activeModelLabel = result.data.activeModelLabel, modelMessage = result.data.message)
                     }
-                    is RepositoryResult.Error -> {
-                        _uiState.update {
-                            it.copy(
-                                activeModelLabel = "CNN-LSTM",
-                                modelMessage = null
-                            )
-                        }
+                    is RepositoryResult.Error -> _uiState.update {
+                        it.copy(activeModelLabel = "CNN-LSTM", modelMessage = null)
                     }
                 }
             } catch (e: TimeoutCancellationException) {
-                _uiState.update {
-                    it.copy(activeModelLabel = "CNN-LSTM", modelMessage = null)
-                }
+                _uiState.update { it.copy(activeModelLabel = "CNN-LSTM", modelMessage = null) }
             }
         }
     }

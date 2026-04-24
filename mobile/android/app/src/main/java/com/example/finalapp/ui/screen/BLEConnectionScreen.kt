@@ -228,19 +228,9 @@ fun BLEConnectionScreen(
                                 .padding(14.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(
-                                t("Latest BP Result", "Son BP Sonucu"),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SuccessGreen
-                            )
+                            Text(t("Latest BP Result", "Son BP Sonucu"), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SuccessGreen)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                result,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = ForegroundBlack
-                            )
+                            Text(result, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
                         }
                     }
 
