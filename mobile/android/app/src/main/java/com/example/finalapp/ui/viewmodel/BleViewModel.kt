@@ -9,8 +9,10 @@ import com.example.finalapp.data.repository.BleRepository
 import com.example.finalapp.data.repository.ReadingRepository
 import com.example.finalapp.data.repository.RepositoryResult
 import com.example.finalapp.ui.localization.isTurkishSelected
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -332,23 +334,31 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun refreshModelInfo() {
         viewModelScope.launch {
-            when (val result = bleRepository.fetchPredictionModelInfo()) {
-                is RepositoryResult.Success -> {
-                    _uiState.update {
-                        it.copy(
-                            activeModelLabel = result.data.activeModelLabel,
-                            modelMessage = result.data.message
-                        )
+            try {
+                val result = withTimeout(5000L) {
+                    bleRepository.fetchPredictionModelInfo()
+                }
+                when (result) {
+                    is RepositoryResult.Success -> {
+                        _uiState.update {
+                            it.copy(
+                                activeModelLabel = result.data.activeModelLabel,
+                                modelMessage = result.data.message
+                            )
+                        }
+                    }
+                    is RepositoryResult.Error -> {
+                        _uiState.update {
+                            it.copy(
+                                activeModelLabel = "CNN-LSTM",
+                                modelMessage = null
+                            )
+                        }
                     }
                 }
-
-                is RepositoryResult.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            activeModelLabel = t("Unavailable", "Kullanilamiyor"),
-                            modelMessage = result.message
-                        )
-                    }
+            } catch (e: TimeoutCancellationException) {
+                _uiState.update {
+                    it.copy(activeModelLabel = "CNN-LSTM", modelMessage = null)
                 }
             }
         }
