@@ -3,10 +3,12 @@ package com.example.finalapp.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.repository.DashboardRepository
+import com.example.finalapp.data.repository.ReadingRepository
 import com.example.finalapp.data.repository.RepositoryResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -39,6 +41,19 @@ class HealthStatusViewModel(
 
     init {
         refresh()
+        observeNewReadings()
+    }
+
+    private fun observeNewReadings() {
+        viewModelScope.launch {
+            var prevCount = ReadingRepository.readings.value.size
+            ReadingRepository.readings.collect { readings ->
+                if (readings.size > prevCount) {
+                    prevCount = readings.size
+                    refresh()
+                }
+            }
+        }
     }
 
     fun refresh() {
