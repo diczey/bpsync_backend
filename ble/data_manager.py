@@ -26,9 +26,9 @@ WAVEFORM_FRAME_INTERVAL_MS = 40.0
 ECG_SAMPLE_INTERVAL_MS = 4.0
 WAVEFORM_TARGET_SAMPLES = 250
 MIN_QUALITY_RATIO = 0.0
-DB_SYNC_TOLERANCE_MS = 120
-DB_SYNC_RECEIVED_AT_TOLERANCE_MS = 250
-DB_SYNC_FETCH_LIMIT = 220
+DB_SYNC_TOLERANCE_MS = 200
+DB_SYNC_RECEIVED_AT_TOLERANCE_MS = 500
+DB_SYNC_FETCH_LIMIT = 300
 DB_SYNC_MISSING_SEQ_PENALTY = 10_000
 
 
@@ -150,9 +150,8 @@ class DataManager:
 
         try:
             normalized_payload = self._normalize_wrist_partial_payload(json_str)
-            mobile_received_at_ms = self._extract_optional_ms(normalized_payload.get("mobile_ts"))
             frame = BLEFrame.model_validate(normalized_payload)
-            frame.received_at_ms = mobile_received_at_ms or int(time.time() * 1000)
+            frame.received_at_ms = int(time.time() * 1000)  # always server clock
         except Exception as exc:
             self._frames_failed += 1
             logger.warning("Wrist frame parse error: %s", exc)
@@ -208,7 +207,7 @@ class DataManager:
 
         try:
             payload = self._normalize_chest_partial_payload(json_str)
-            received_at_ms = self._extract_optional_ms(payload.get("mobile_ts")) or int(time.time() * 1000)
+            received_at_ms = int(time.time() * 1000)  # always server clock
         except Exception as exc:
             self._frames_failed += 1
             logger.warning("Chest frame parse error: %s", exc)
@@ -275,12 +274,13 @@ class DataManager:
             return
 
         now_ms = int(time.time() * 1000)
+        watermark_ms = now_ms - 10_000  # 10s buffer for first frames
         state.window = deque(maxlen=self._window_target_for_mode("legacy"))
         state.mode = "legacy"
         state.db_buffer_fill = f"0/{WAVEFORM_WINDOW_FRAMES}"
-        state.last_synced_wrist_received_at_ms = now_ms
-        state.last_synced_chest_received_at_ms = now_ms
-        logger.info("DataManager stream reset for %s (watermark=%d)", user_id, now_ms)
+        state.last_synced_wrist_received_at_ms = watermark_ms
+        state.last_synced_chest_received_at_ms = watermark_ms
+        logger.info("DataManager stream reset for %s (watermark=%d)", user_id, watermark_ms)
 
     def get_stats(self, user_id: Optional[str] = None):
         if user_id:
