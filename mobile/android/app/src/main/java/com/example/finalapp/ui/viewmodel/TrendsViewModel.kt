@@ -6,6 +6,7 @@ import com.example.finalapp.data.model.TrendDataDto
 import com.example.finalapp.data.repository.ReadingRepository
 import com.example.finalapp.data.repository.RepositoryResult
 import com.example.finalapp.data.repository.TrendsRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +29,8 @@ class TrendsViewModel(
     private val _uiState = MutableStateFlow(TrendsUiState())
     val uiState: StateFlow<TrendsUiState> = _uiState.asStateFlow()
 
+    private var trendsJob: Job? = null
+
     init {
         loadTrends("week")
         observeNewReadings()
@@ -39,53 +42,59 @@ class TrendsViewModel(
             ReadingRepository.readings.collect { readings ->
                 if (readings.size > prevCount) {
                     prevCount = readings.size
-                    val backendPeriod = when (_uiState.value.selectedPeriod) {
-                        "Daily" -> "day"
-                        "Monthly" -> "month"
-                        else -> "week"
+                    if (!_uiState.value.isLoading) {
+                        val backendPeriod = when (_uiState.value.selectedPeriod) {
+                            "Daily" -> "day"
+                            "Monthly" -> "month"
+                            else -> "week"
+                        }
+                        loadTrends(backendPeriod)
                     }
-                    loadTrends(backendPeriod)
                 }
             }
         }
     }
 
     fun setPeriod(period: String) {
-        // Map UI labels to backend labels (Daily -> day, Weekly -> week, Monthly -> month)
         val backendPeriod = when (period) {
             "Daily" -> "day"
             "Weekly" -> "week"
             "Monthly" -> "month"
             else -> "week"
         }
-        
         _uiState.update { it.copy(selectedPeriod = period) }
         loadTrends(backendPeriod)
     }
 
     private fun loadTrends(period: String) {
-        viewModelScope.launch {
+        trendsJob?.cancel()
+        trendsJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            
-            when (val result = repository.fetchTrends(period)) {
-                is RepositoryResult.Success -> {
-                    _uiState.update { 
-                        it.copy(
-                            trends = result.data.trends,
-                            isLoading = false,
-                            errorMessage = null,
-                            infoMessage = result.data.message
-                        ) 
+            try {
+                when (val result = repository.fetchTrends(period)) {
+                    is RepositoryResult.Success -> {
+                        _uiState.update {
+                            it.copy(
+                                trends = result.data.trends,
+                                isLoading = false,
+                                errorMessage = null,
+                                infoMessage = result.data.message
+                            )
+                        }
+                    }
+                    is RepositoryResult.Error -> {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                errorMessage = result.message,
+                                infoMessage = null
+                            )
+                        }
                     }
                 }
-                is RepositoryResult.Error -> {
-                    _uiState.update { 
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = result.message,
-                            infoMessage = null
-                        ) 
-                    }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(isLoading = false, errorMessage = null, infoMessage = "No data for this period.")
                 }
             }
         }
