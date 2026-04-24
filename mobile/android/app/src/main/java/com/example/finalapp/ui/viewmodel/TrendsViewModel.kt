@@ -65,14 +65,17 @@ class TrendsViewModel(
 
     private fun observeNewReadings() {
         viewModelScope.launch {
-            var previousCount = ReadingRepository.readings.value.size
+            var previousSignature: String? = null
             ReadingRepository.readings.collectLatest { readings ->
-                if (readings.size > previousCount) {
-                    previousCount = readings.size
+                val latest = readings.firstOrNull()
+                val currentSignature = latest?.let {
+                    "${it.id}:${it.timestamp}:${it.systolic}:${it.diastolic}:${it.pulse}"
+                } ?: "empty:${readings.size}"
+
+                if (previousSignature != null && currentSignature != previousSignature) {
                     loadTrends(backendPeriod)
-                } else {
-                    previousCount = readings.size
                 }
+                previousSignature = currentSignature
             }
         }
     }

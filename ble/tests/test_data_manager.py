@@ -294,6 +294,40 @@ class TestDataManager:
         # Buffer should be empty after ML window ran
         assert len(dm._window) == 0
 
+    def test_reset_user_stream_sets_session_watermark(self):
+        dm = _make_dm(default_user_id="u-session")
+        dm._state_for_user("u-session")
+
+        dm.reset_user_stream("u-session")
+
+        state = dm._state_for_user("u-session")
+        assert state.session_started_at_ms > 0
+        assert state.last_synced_wrist_received_at_ms == state.session_started_at_ms
+        assert state.last_synced_chest_received_at_ms == state.session_started_at_ms
+
+    def test_match_rows_prefers_exact_seq_when_timestamps_drift(self):
+        wrist_rows = [
+            {
+                "sq": seq,
+                "received_at_ms": seq * 1_000,
+                "device_timestamp_ms": None,
+            }
+            for seq in range(1, 26)
+        ]
+        chest_rows = [
+            {
+                "sq": seq,
+                "received_at_ms": (seq * 1_000) + 1_200,
+                "device_timestamp_ms": None,
+            }
+            for seq in range(1, 26)
+        ]
+
+        matched_pairs = DataManager._match_rows_by_timestamp(wrist_rows, chest_rows)
+
+        assert len(matched_pairs) == 25
+        assert all(int(wrist["sq"]) == int(chest["sq"]) for wrist, chest in matched_pairs)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  TESTS: Signal processing static methods

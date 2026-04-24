@@ -28,6 +28,7 @@ WAVEFORM_TARGET_SAMPLES = 250
 MIN_QUALITY_RATIO = 0.6
 DB_SYNC_TOLERANCE_MS = 120
 DB_SYNC_RECEIVED_AT_TOLERANCE_MS = 250
+DB_SYNC_EXACT_SEQ_TOLERANCE_MS = 5_000
 DB_SYNC_FETCH_LIMIT = 220
 DB_SYNC_MISSING_SEQ_PENALTY = 10_000
 
@@ -41,6 +42,7 @@ class UserStreamState:
     db_buffer_fill: str = f"0/{WAVEFORM_WINDOW_FRAMES}"
     last_synced_wrist_received_at_ms: int = 0
     last_synced_chest_received_at_ms: int = 0
+    session_started_at_ms: int = 0
 
 
 _data_manager_instance: Optional["DataManager"] = None
@@ -274,11 +276,13 @@ class DataManager:
         if state is None:
             return
 
+        session_started_at_ms = max(0, int(time.time() * 1000) - 1)
         state.window = deque(maxlen=self._window_target_for_mode("legacy"))
         state.mode = "legacy"
         state.db_buffer_fill = f"0/{WAVEFORM_WINDOW_FRAMES}"
-        state.last_synced_wrist_received_at_ms = 0
-        state.last_synced_chest_received_at_ms = 0
+        state.last_synced_wrist_received_at_ms = session_started_at_ms
+        state.last_synced_chest_received_at_ms = session_started_at_ms
+        state.session_started_at_ms = session_started_at_ms
         logger.info("DataManager stream reset for %s", user_id)
 
     def get_stats(self, user_id: Optional[str] = None):
@@ -910,12 +914,60 @@ class DataManager:
             return []
 
         pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        used_chest_indexes: set[int] = set()
+        matched_wrist_indexes: set[int] = set()
+
+        chest_by_seq: dict[int, list[int]] = {}
+        for idx, chest_row in enumerate(chest_rows):
+            try:
+                seq_num = int(chest_row.get("sq", -1))
+            except (TypeError, ValueError):
+                seq_num = -1
+            if seq_num >= 0:
+                chest_by_seq.setdefault(seq_num, []).append(idx)
+
+        # First prefer exact seq matches. Mobile uploads wrist/chest as separate requests,
+        # so received_at timestamps can drift enough to miss strict timing windows even
+        # though the packets belong to the same sample batch.
+        for wrist_index, wrist in enumerate(wrist_rows):
+            try:
+                wrist_seq = int(wrist.get("sq", -1))
+            except (TypeError, ValueError):
+                wrist_seq = -1
+            if wrist_seq < 0:
+                continue
+
+            best_index: Optional[int] = None
+            best_score: Optional[tuple[int, int, int]] = None
+            for chest_index in chest_by_seq.get(wrist_seq, []):
+                if chest_index in used_chest_indexes:
+                    continue
+                chest_row = chest_rows[chest_index]
+                wrist_ts, chest_ts, clock_priority, _ = cls._pair_timestamps_ms(wrist, chest_row)
+                delta = abs(chest_ts - wrist_ts)
+                if delta > DB_SYNC_EXACT_SEQ_TOLERANCE_MS:
+                    continue
+
+                score = (delta, clock_priority, chest_index)
+                if best_score is None or score < best_score:
+                    best_score = score
+                    best_index = chest_index
+
+            if best_index is not None:
+                pairs.append((wrist, chest_rows[best_index]))
+                used_chest_indexes.add(best_index)
+                matched_wrist_indexes.add(wrist_index)
+
         chest_index = 0
-        for wrist in wrist_rows:
+        for wrist_index, wrist in enumerate(wrist_rows):
+            if wrist_index in matched_wrist_indexes:
+                continue
             best_index: Optional[int] = None
             best_score: Optional[tuple[int, int, int]] = None
 
             for idx in range(chest_index, len(chest_rows)):
+                if idx in used_chest_indexes:
+                    continue
                 chest_row = chest_rows[idx]
                 wrist_ts, chest_ts, clock_priority, tolerance_ms = cls._pair_timestamps_ms(wrist, chest_row)
                 delta = abs(chest_ts - wrist_ts)
@@ -932,10 +984,12 @@ class DataManager:
                 continue
 
             pairs.append((wrist, chest_rows[best_index]))
+            used_chest_indexes.add(best_index)
             chest_index = best_index + 1
             if chest_index >= len(chest_rows):
                 break
 
+        pairs.sort(key=lambda pair: (int(pair[0].get("received_at_ms", 0)), int(pair[0].get("sq", 0))))
         return pairs
 
     async def _attempt_db_synced_inference(self, user_id: str, state: UserStreamState) -> tuple[Optional[InferredReading], str]:
