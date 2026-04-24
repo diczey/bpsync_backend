@@ -791,8 +791,13 @@ class DataManager:
 
             ppg_ir = self._decode_numeric_series(row.get("ppg_ir_batch") if "ppg_ir_batch" in row else row.get("ppg_ir"))
             ppg_red = self._decode_numeric_series(row.get("ppg_red_batch") if "ppg_red_batch" in row else row.get("ppg_red"))
-            if len(ppg_ir) < 2 or len(ppg_red) < 2:
+            if not ppg_ir and not ppg_red:
                 continue
+            # If only scalar stored, replicate to minimal batch so row is not discarded
+            if len(ppg_ir) < 2:
+                ppg_ir = ppg_ir * 8 if ppg_ir else [0] * 8
+            if len(ppg_red) < 2:
+                ppg_red = ppg_red * 8 if ppg_red else [0] * 8
 
             normalized_rows.append(
                 {
@@ -995,26 +1000,29 @@ class DataManager:
 
         waveform_window = self._build_waveform_window(frames)
         inferred = None
+        skip_reason: str = ""
 
         if waveform_window is not None:
             good_count = sum(1 for frame in frames if frame.qi == 1)
             if good_count >= self._min_quality_frames(len(frames)):
                 inferred = await self._run_inference_and_store(user_id, state, frames, waveform_window)
+                if inferred is None:
+                    skip_reason = "cnn-error"
             else:
-                logger.info(
-                    "DB synced window skipped for %s: %d/%d good frames",
-                    user_id,
-                    good_count,
-                    len(frames),
-                )
+                skip_reason = f"low-quality:{good_count}/{len(frames)}"
+                logger.info("DB synced window skipped for %s: %d/%d good frames", user_id, good_count, len(frames))
         else:
-            logger.info("DB synced window for %s did not produce a valid waveform window.", user_id)
+            ppg_lens = [len(f.ppg_ir_batch) for f in frames[:3]]
+            ecg_lens = [len(f.ecg_batch) for f in frames[:3]]
+            skip_reason = f"bad-waveform:ppg={ppg_lens}ecg={ecg_lens}"
+            logger.warning("DB synced window for %s: bad waveform. ppg_lens=%s ecg_lens=%s", user_id, ppg_lens, ecg_lens)
 
         last_wrist_ms = int(selected_pairs[-1][0]["received_at_ms"])
         last_chest_ms = int(selected_pairs[-1][1]["received_at_ms"])
         state.last_synced_wrist_received_at_ms = max(state.last_synced_wrist_received_at_ms, last_wrist_ms)
         state.last_synced_chest_received_at_ms = max(state.last_synced_chest_received_at_ms, last_chest_ms)
-        state.db_buffer_fill = f"0/{WAVEFORM_WINDOW_FRAMES}"
+        suffix = f":{skip_reason}" if skip_reason and inferred is None else ""
+        state.db_buffer_fill = f"0/{WAVEFORM_WINDOW_FRAMES}{suffix}"
         return inferred, state.db_buffer_fill
 
     async def _run_inference_and_store(
@@ -1039,7 +1047,12 @@ class DataManager:
             logger.warning("Could not fetch user age for %s, using %s: %s", user_id, user_age, exc)
 
         try:
-            from backend.services.bp_model_service import predict_live_blood_pressure
+            from backend.services.bp_model_service import predict_live_blood_pressure, get_prediction_service
+            svc = get_prediction_service()
+            if not svc._cnn.is_ready():
+                missing = svc._cnn.missing_requirements()
+                logger.error("CNN not ready for %s: %s", user_id, missing)
+                return None
 
             result = predict_live_blood_pressure(
                 ptt=ptt,
