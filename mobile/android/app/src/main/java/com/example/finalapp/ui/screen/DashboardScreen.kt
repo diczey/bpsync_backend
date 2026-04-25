@@ -201,13 +201,13 @@ fun DashboardScreen(
                     )
                     MetricCard(
                         modifier = Modifier.weight(1f),
-                        title = "SpO2",
-                        value = uiState.spo2,
-                        subtitle = "%",
-                        icon = Icons.Default.SettingsInputAntenna,
-                        backgroundColor = Color.White.copy(alpha = 0.96f),
-                        valueColor = ForegroundBlack,
-                        metaColor = TextSecondary
+                        title = t("Heart Rate", "Nabız"),
+                        value = uiState.pulse,
+                        subtitle = "bpm",
+                        icon = Icons.Default.Favorite,
+                        backgroundColor = Color(0xFFFFEEF0),
+                        valueColor = ErrorRed,
+                        metaColor = ErrorRed.copy(alpha = 0.6f)
                     )
                 }
 
@@ -234,9 +234,9 @@ fun DashboardScreen(
                         value = bleMetricValue,
                         subtitle = t("wrist + chest", "wrist + chest"),
                         icon = Icons.Default.Bluetooth,
-                        backgroundColor = ForegroundBlack,
-                        valueColor = Color.White,
-                        metaColor = Color.White.copy(alpha = 0.56f),
+                        backgroundColor = if (bleConnected) Color(0xFFE8F5E9) else Color(0xFFEEF3FF),
+                        valueColor = if (bleConnected) SuccessGreen else TextSecondary,
+                        metaColor = if (bleConnected) SuccessGreen.copy(alpha = 0.7f) else TextMuted,
                         compact = true
                     )
                 }
@@ -298,8 +298,7 @@ fun DashboardScreen(
                         subtitle = t("Real time", "Canli izleme"),
                         icon = Icons.Default.Wifi,
                         iconColor = OrangeMain,
-                        backgroundColor = ForegroundBlack,
-                        contentColor = Color.White,
+                        backgroundColor = Color(0xFFFFF3E0),
                         onClick = { navController.navigate(Screen.PPG.route) }
                     )
                     QuickAccessCard(
@@ -559,10 +558,10 @@ private fun BleOverviewCard(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                healthId,
+                "ID: BP-${healthId.takeLast(6).uppercase()}",
                 fontSize = 11.sp,
                 color = TextSecondary,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
 

@@ -169,7 +169,7 @@ fun ProfileScreen(
                     }
 
                     Text(
-                        "${t("Health ID", "Sağlık ID")}: ${uiState.healthId}",
+                        "ID: BP-${uiState.healthId.takeLast(6).uppercase()}",
                         fontSize = 13.sp,
                         color = TextSecondary,
                         fontWeight = FontWeight.Medium
@@ -247,14 +247,6 @@ fun ProfileScreen(
                 icon = Icons.Default.Email,
                 isEditing = uiState.isEditing
             )
-            EditableInfoBlock(
-                label = t("Phone", "Telefon"),
-                value = "+1 234 567 8900",
-                onValueChange = {},
-                icon = Icons.Default.Phone,
-                isEditing = false
-            )
-
             Spacer(modifier = Modifier.height(24.dp))
 
             // Quick links

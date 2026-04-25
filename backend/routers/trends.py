@@ -59,10 +59,9 @@ PERIOD_BACK = {
 }
 
 PERIOD_BUCKET_EXPR = {
-    # PostgreSQL-compatible bucket expressions (no Timescale-only functions).
-    'day':   "date_trunc('hour', time)",
-    'week':  "date_trunc('hour', time) - ((EXTRACT(hour FROM time)::int % 6) * INTERVAL '1 hour')",
-    'month': "date_trunc('day', time)",
+    'day':   "date_trunc('minute', time) - ((EXTRACT(minute FROM time)::int % 5) * INTERVAL '1 minute')",
+    'week':  "date_trunc('day', time)",
+    'month': "date_trunc('week', time)",
 }
 
 
