@@ -1101,6 +1101,9 @@ private object AndroidBleManager {
     }
 
     private fun updateLastError(message: String) {
+        // Ignore internal coroutine cancellation — not a real error
+        if (message.contains("Job was cancelled", ignoreCase = true) ||
+            message.contains("CancellationException", ignoreCase = true)) return
         lastError = message
         publishStatus()
     }

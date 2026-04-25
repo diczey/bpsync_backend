@@ -9,6 +9,7 @@ import com.example.finalapp.data.repository.BleRepository
 import com.example.finalapp.data.repository.ReadingRepository
 import com.example.finalapp.data.repository.RepositoryResult
 import com.example.finalapp.ui.localization.isTurkishSelected
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -153,7 +154,7 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                     refreshStatus()
-                    launch {
+                    launch(NonCancellable) {
                         delay(3500L)
                         ReadingRepository.syncFromApi()
                     }

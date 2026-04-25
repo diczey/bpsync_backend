@@ -3,10 +3,12 @@ package com.example.finalapp.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.model.TrendDataDto
+import com.example.finalapp.data.repository.BleRepository
 import com.example.finalapp.data.repository.ReadingRepository
 import com.example.finalapp.data.repository.RepositoryResult
 import com.example.finalapp.data.repository.TrendsRepository
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,11 +31,13 @@ class TrendsViewModel(
     private val _uiState = MutableStateFlow(TrendsUiState())
     val uiState: StateFlow<TrendsUiState> = _uiState.asStateFlow()
 
+    private val bleRepository = BleRepository()
     private var trendsJob: Job? = null
 
     init {
         loadTrends("week")
         observeNewReadings()
+        observeBleStreamingStop()
     }
 
     private fun observeNewReadings() {
@@ -43,11 +47,7 @@ class TrendsViewModel(
                 if (readings.size > prevCount) {
                     prevCount = readings.size
                     if (!_uiState.value.isLoading) {
-                        val backendPeriod = when (_uiState.value.selectedPeriod) {
-                            "Daily" -> "day"
-                            "Monthly" -> "month"
-                            else -> "week"
-                        }
+                        val backendPeriod = backendPeriod()
                         loadTrends(backendPeriod)
                     }
                 }
@@ -55,15 +55,35 @@ class TrendsViewModel(
         }
     }
 
+    private fun observeBleStreamingStop() {
+        viewModelScope.launch {
+            var wasStreaming = false
+            bleRepository.observeBleStatus().collect { status ->
+                if (wasStreaming && !status.streaming) {
+                    // Streaming just stopped — wait for backend to process, then refresh
+                    delay(4000L)
+                    loadTrends(backendPeriod())
+                }
+                wasStreaming = status.streaming
+            }
+        }
+    }
+
+    private fun backendPeriod(): String = when (_uiState.value.selectedPeriod) {
+        "Daily" -> "day"
+        "Monthly" -> "month"
+        else -> "week"
+    }
+
     fun setPeriod(period: String) {
-        val backendPeriod = when (period) {
+        val bp = when (period) {
             "Daily" -> "day"
             "Weekly" -> "week"
             "Monthly" -> "month"
             else -> "week"
         }
         _uiState.update { it.copy(selectedPeriod = period) }
-        loadTrends(backendPeriod)
+        loadTrends(bp)
     }
 
     private fun loadTrends(period: String) {
