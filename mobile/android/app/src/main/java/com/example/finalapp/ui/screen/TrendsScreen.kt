@@ -33,8 +33,10 @@ import com.example.finalapp.ui.theme.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.finalapp.data.model.TrendDataDto
+import com.example.finalapp.ui.component.MeasuringOverlay
 import com.example.finalapp.ui.localization.rememberIsTurkish
 import com.example.finalapp.ui.localization.translateMessage
+import com.example.finalapp.ui.viewmodel.BleViewModel
 import com.example.finalapp.ui.viewmodel.TrendsViewModel
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -50,11 +52,18 @@ import kotlin.math.roundToInt
 @Composable
 fun TrendsScreen(
     navController: NavController,
-    viewModel: TrendsViewModel = viewModel()
+    viewModel: TrendsViewModel = viewModel(),
+    bleViewModel: BleViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val bleUiState by bleViewModel.uiState.collectAsStateWithLifecycle()
     val periods = listOf("Daily", "Weekly", "Monthly")
     val isTurkish = rememberIsTurkish()
+
+    if (bleUiState.streaming) {
+        MeasuringOverlay(isTurkish = isTurkish)
+        return
+    }
 
     fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
     fun periodLabel(period: String): String = when (period) {

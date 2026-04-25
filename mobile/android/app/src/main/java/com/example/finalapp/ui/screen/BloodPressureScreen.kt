@@ -52,19 +52,28 @@ import com.example.finalapp.ui.theme.BackgroundGradient
 import com.example.finalapp.ui.theme.ErrorRed
 import com.example.finalapp.ui.theme.ForegroundBlack
 import com.example.finalapp.ui.theme.PrimaryBlue
+import com.example.finalapp.ui.component.MeasuringOverlay
 import com.example.finalapp.ui.theme.SuccessGreen
 import com.example.finalapp.ui.theme.TextMuted
 import com.example.finalapp.ui.theme.TextSecondary
+import com.example.finalapp.ui.viewmodel.BleViewModel
 import com.example.finalapp.ui.viewmodel.BloodPressureViewModel
 
 @Composable
 fun BloodPressureScreen(
     navController: NavController,
-    viewModel: BloodPressureViewModel = viewModel()
+    viewModel: BloodPressureViewModel = viewModel(),
+    bleViewModel: BleViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val bleUiState by bleViewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
     val isTurkish = rememberIsTurkish()
+
+    if (bleUiState.streaming) {
+        MeasuringOverlay(isTurkish = isTurkish)
+        return
+    }
 
     fun t(english: String, turkish: String): String = if (isTurkish) turkish else english
 
