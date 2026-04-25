@@ -61,7 +61,7 @@ class TrendsViewModel(
             bleRepository.observeBleStatus().collect { status ->
                 if (wasStreaming && !status.streaming) {
                     // Streaming just stopped — wait for backend to process, then refresh
-                    delay(4000L)
+                    delay(12000L)  // 10s window + 2s buffer
                     loadTrends(backendPeriod())
                 }
                 wasStreaming = status.streaming

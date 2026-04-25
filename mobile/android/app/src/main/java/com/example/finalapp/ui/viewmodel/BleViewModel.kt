@@ -155,7 +155,7 @@ class BleViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     refreshStatus()
                     launch(NonCancellable) {
-                        delay(3500L)
+                        delay(11000L)  // 10s window + 1s buffer
                         ReadingRepository.syncFromApi()
                     }
                 }

@@ -1,8 +1,9 @@
 """
-Blood pressure model selection service.
+Blood pressure model service — ResBlock-BiLSTM fusion model.
 
-This module runs the CNN-LSTM model only for live BLE waveform windows.
-Legacy feature-based inference has been removed.
+Input : (batch, 1250, 3) — [ECG, PPG_RED, PPG_IR] at 125 Hz, 10 s window
+Output: [SBP, DBP] in mmHg directly (no inverse transform needed)
+Normalization: per-segment min-max per channel, applied before inference
 """
 
 from __future__ import annotations
@@ -12,32 +13,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import joblib
 import numpy as np
 
 from backend.config import settings
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 CNN_MODEL_CANDIDATES = [
-    REPO_ROOT / "CNNmodels" / "model_ecg_ppg_red_ir.keras",
-]
-CNN_SCALER_X_CANDIDATES = [
-    REPO_ROOT / "scaler_X_red_ir.pkl",
-    REPO_ROOT / "CNNmodels" / "scaler_X_red_ir.pkl",
-    REPO_ROOT / "CNNmodels" / "scaler_x_red_ir.joblib",
-]
-CNN_SCALER_Y_CANDIDATES = [
-    REPO_ROOT / "scaler_y_red_ir.pkl",
-    REPO_ROOT / "CNNmodels" / "scaler_y_red_ir.pkl",
-    REPO_ROOT / "CNNmodels" / "scaler_y_red_ir.joblib",
+    REPO_ROOT / "model_fused_resblock_bilstm1.keras",
+    REPO_ROOT / "CNNmodels" / "model_fused_resblock_bilstm1.keras",
 ]
 
-LIVE_BLE_PROTOCOL_MESSAGE = (
-    "Backend is configured for CNN-LSTM only. Live inference requires waveform "
-    "BLE batches with ECG + PPG_RED + PPG_IR."
-)
+EXPECTED_SAMPLES = 1250  # 125 Hz × 10 s
 
 
 def _first_existing(candidates: List[Path]) -> Optional[Path]:
@@ -45,6 +32,16 @@ def _first_existing(candidates: List[Path]) -> Optional[Path]:
         if candidate.exists():
             return candidate
     return None
+
+
+def _minmax_normalize(signal: np.ndarray) -> np.ndarray:
+    """Per-segment min-max normalization to [0, 1]."""
+    mn = signal.min()
+    mx = signal.max()
+    rng = mx - mn
+    if rng == 0:
+        return np.zeros_like(signal)
+    return (signal - mn) / rng
 
 
 @dataclass
@@ -55,16 +52,18 @@ class WaveformWindow:
 
     @property
     def is_valid(self) -> bool:
-        return len(self.ecg) == 250 and len(self.ppg_red) == 250 and len(self.ppg_ir) == 250
+        return (
+            len(self.ecg) == EXPECTED_SAMPLES
+            and len(self.ppg_red) == EXPECTED_SAMPLES
+            and len(self.ppg_ir) == EXPECTED_SAMPLES
+        )
 
 
 class CNNBPModel:
-    """Lazy runtime wrapper for the CNN-LSTM model artifacts."""
+    """Lazy-load wrapper for the ResBlock-BiLSTM fusion model."""
 
     def __init__(self):
         self._model = None
-        self._scaler_x = None
-        self._scaler_y = None
         self._load_error: Optional[str] = None
 
     @staticmethod
@@ -74,22 +73,12 @@ class CNNBPModel:
     def model_path(self) -> Optional[Path]:
         return _first_existing(CNN_MODEL_CANDIDATES)
 
-    def scaler_x_path(self) -> Optional[Path]:
-        return _first_existing(CNN_SCALER_X_CANDIDATES)
-
-    def scaler_y_path(self) -> Optional[Path]:
-        return _first_existing(CNN_SCALER_Y_CANDIDATES)
-
     def missing_requirements(self) -> List[str]:
         missing: List[str] = []
         if not self._tensorflow_available():
-            missing.append("tensorflow is not installed on the backend runtime")
+            missing.append("tensorflow is not installed")
         if self.model_path() is None:
-            missing.append("missing CNN model artifact: model_ecg_ppg_red_ir.keras")
-        if self.scaler_x_path() is None:
-            missing.append("missing scaler artifact: scaler_X_red_ir.pkl")
-        if self.scaler_y_path() is None:
-            missing.append("missing scaler artifact: scaler_y_red_ir.pkl")
+            missing.append("missing model: model_fused_resblock_bilstm1.keras")
         return missing
 
     def is_ready(self) -> bool:
@@ -101,85 +90,78 @@ class CNNBPModel:
             return "; ".join(missing)
         if self._load_error:
             return self._load_error
-        return "CNN model is ready."
+        return "ResBlock-BiLSTM model is ready."
 
     def _lazy_load(self) -> bool:
-        if self._model is not None and self._scaler_x is not None and self._scaler_y is not None:
+        if self._model is not None:
             return True
-
         model_path = self.model_path()
-        scaler_x_path = self.scaler_x_path()
-        scaler_y_path = self.scaler_y_path()
-        if not self.is_ready() or model_path is None or scaler_x_path is None or scaler_y_path is None:
+        if not self.is_ready() or model_path is None:
             self._load_error = self.status_message()
             return False
-
         try:
             from tensorflow.keras.models import load_model  # type: ignore
-
             self._model = load_model(model_path)
-            self._scaler_x = joblib.load(scaler_x_path)
-            self._scaler_y = joblib.load(scaler_y_path)
             self._load_error = None
             return True
-        except Exception as exc:  # pragma: no cover - depends on optional runtime deps
-            self._load_error = f"could not load CNN runtime artifacts: {exc}"
+        except Exception as exc:
+            self._load_error = f"could not load model: {exc}"
             self._model = None
-            self._scaler_x = None
-            self._scaler_y = None
             return False
 
     def predict(self, waveform_window: WaveformWindow) -> Tuple[int, int]:
         if not waveform_window.is_valid:
-            raise ValueError("CNN expects exactly 250 samples for ECG, PPG_RED, and PPG_IR.")
+            raise ValueError(
+                f"Model expects {EXPECTED_SAMPLES} samples per channel "
+                f"(ECG={len(waveform_window.ecg)}, "
+                f"RED={len(waveform_window.ppg_red)}, "
+                f"IR={len(waveform_window.ppg_ir)})"
+            )
         if not self._lazy_load():
             raise RuntimeError(self.status_message())
 
-        stacked = np.stack(
-            (
-                np.asarray(waveform_window.ppg_red, dtype=np.float32),
-                np.asarray(waveform_window.ppg_ir, dtype=np.float32),
-                np.asarray(waveform_window.ecg, dtype=np.float32),
-            ),
-            axis=-1,
-        )
-        flat = stacked.reshape(1, -1)
-        scaled = self._scaler_x.transform(flat).reshape(1, 250, 3)
-        prediction = self._model.predict(scaled, verbose=0)
-        restored = self._scaler_y.inverse_transform(prediction)[0]
+        ecg = _minmax_normalize(np.asarray(waveform_window.ecg, dtype=np.float32))
+        red = _minmax_normalize(np.asarray(waveform_window.ppg_red, dtype=np.float32))
+        ir  = _minmax_normalize(np.asarray(waveform_window.ppg_ir,  dtype=np.float32))
 
-        systolic = int(np.clip(round(float(restored[0])), 90, 200))
-        diastolic = int(np.clip(round(float(restored[1])), 55, 130))
-        if systolic <= diastolic + 15:
-            systolic = diastolic + 25
-        return systolic, diastolic
+        # Channel order expected by the model: [ECG, PPG_RED, PPG_IR]
+        stacked = np.stack((ecg, red, ir), axis=-1)          # (1250, 3)
+        tensor  = stacked.reshape(1, EXPECTED_SAMPLES, 3)    # (1, 1250, 3)
+
+        prediction = self._model.predict(tensor, verbose=0)  # [[SBP, DBP]]
+        sbp = int(np.clip(round(float(prediction[0][0])), 70, 200))
+        dbp = int(np.clip(round(float(prediction[0][1])), 40, 130))
+        if sbp <= dbp + 15:
+            sbp = dbp + 25
+        return sbp, dbp
 
 
 class BloodPressurePredictionService:
     def __init__(self):
         self._cnn = CNNBPModel()
 
-    def requested_model(self) -> str:
-        raw_value = (settings.bp_model_backend or "cnn").strip().lower()
-        return "cnn" if raw_value != "cnn" else raw_value
-
     @staticmethod
     def _categorize(systolic: int, diastolic: int) -> str:
         if systolic < 120 and diastolic < 80:
             return "Normal"
         if systolic < 130 and diastolic < 80:
-            return "Yuksek Normal"
+            return "Elevated"
         if systolic < 140 or diastolic < 90:
-            return "Evre 1 Hipertansiyon"
+            return "Stage 1 Hypertension"
         if systolic < 180 or diastolic < 120:
-            return "Evre 2 Hipertansiyon"
-        return "Hipertansif Kriz"
+            return "Stage 2 Hypertension"
+        return "Hypertensive Crisis"
 
     def live_ble_cnn_reason(self, waveform_window: Optional[WaveformWindow]) -> Optional[str]:
         if waveform_window is None:
-            return "Incoming BLE frames do not yet include a complete waveform window."
+            return "No waveform window provided."
         if not waveform_window.is_valid:
-            return "CNN expects 250 samples per channel, but the provided live window shape does not match."
+            return (
+                f"Waveform window invalid — expected {EXPECTED_SAMPLES} samples "
+                f"(ECG={len(waveform_window.ecg)}, "
+                f"RED={len(waveform_window.ppg_red)}, "
+                f"IR={len(waveform_window.ppg_ir)})"
+            )
         if not self._cnn.is_ready():
             return self._cnn.status_message()
         return None
@@ -193,42 +175,33 @@ class BloodPressurePredictionService:
         ptt_std: float = 15,
         waveform_window: Optional[WaveformWindow] = None,
     ) -> Dict:
-        cnn_reason = self.live_ble_cnn_reason(waveform_window)
-        if cnn_reason is not None or waveform_window is None:
-            raise RuntimeError(
-                f"CNN-LSTM requires complete waveform BLE batches: {cnn_reason or LIVE_BLE_PROTOCOL_MESSAGE}"
-            )
+        reason = self.live_ble_cnn_reason(waveform_window)
+        if reason is not None or waveform_window is None:
+            raise RuntimeError(f"ResBlock-BiLSTM requires valid waveform: {reason}")
 
         systolic, diastolic = self._cnn.predict(waveform_window)
-        category = self._categorize(systolic, diastolic)
         return {
             "systolic": systolic,
             "diastolic": diastolic,
-            "category": category,
-            "model": "cnn_lstm",
-            "model_label": "CNN-LSTM",
-            "message": "Using Goksu's CNN-LSTM waveform model.",
+            "category": self._categorize(systolic, diastolic),
+            "model": "resblock_bilstm",
+            "model_label": "ResBlock-BiLSTM",
+            "message": "ResBlock-BiLSTM fusion model (125Hz, 10s window).",
             "requested_model": "cnn",
         }
 
     def model_status(self) -> Dict:
         cnn_ready = self._cnn.is_ready()
         model_path = self._cnn.model_path()
-        message = (
-            "Backend is ready to use CNN-LSTM for waveform BLE batches."
-            if cnn_ready
-            else self._cnn.status_message()
-        )
-
         return {
             "requested_model": "cnn",
-            "active_model": "cnn_lstm",
-            "active_model_label": "CNN-LSTM",
+            "active_model": "resblock_bilstm",
+            "active_model_label": "ResBlock-BiLSTM",
             "cnn_model_ready": cnn_ready,
             "cnn_model_path": str(model_path) if model_path else str(CNN_MODEL_CANDIDATES[0]),
             "cnn_missing_requirements": self._cnn.missing_requirements(),
             "live_ble_supports_cnn": True,
-            "message": message,
+            "message": self._cnn.status_message(),
         }
 
 

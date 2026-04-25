@@ -18,17 +18,17 @@ from backend.utils.sensor_identity import resolve_user_by_sensor_key
 logger = logging.getLogger(__name__)
 
 LEGACY_WINDOW_SIZE = 100
-WAVEFORM_WINDOW_FRAMES = 25
+WAVEFORM_WINDOW_FRAMES = 250          # 250 × 40ms = 10 s window
 WINDOW_SIZE = LEGACY_WINDOW_SIZE
 
 LEGACY_FRAME_INTERVAL_MS = 100.0
 WAVEFORM_FRAME_INTERVAL_MS = 40.0
-ECG_SAMPLE_INTERVAL_MS = 4.0
-WAVEFORM_TARGET_SAMPLES = 250
+ECG_SAMPLE_INTERVAL_MS = 8.0          # resampled to 125 Hz → 8 ms/sample
+WAVEFORM_TARGET_SAMPLES = 1250        # 125 Hz × 10 s
 MIN_QUALITY_RATIO = 0.0
 DB_SYNC_TOLERANCE_MS = 200
 DB_SYNC_RECEIVED_AT_TOLERANCE_MS = 500
-DB_SYNC_FETCH_LIMIT = 300
+DB_SYNC_FETCH_LIMIT = 320             # > WAVEFORM_WINDOW_FRAMES to always have enough rows
 DB_SYNC_MISSING_SEQ_PENALTY = 10_000
 
 
@@ -1223,13 +1223,13 @@ class DataManager:
 
     @classmethod
     def _calc_waveform_ptt(cls, frames, waveform_window):
-        ppg_peaks = cls._find_signal_peaks(waveform_window.ppg_ir, minimum_distance=45)
+        ppg_peaks = cls._find_signal_peaks(waveform_window.ppg_ir, minimum_distance=22)
         if not ppg_peaks:
             return None, 0.0
 
         r_peak_indices = [min(index * 10 + 9, len(waveform_window.ecg) - 1) for index, frame in enumerate(frames) if frame.ep == 1]
         if not r_peak_indices:
-            r_peak_indices = cls._find_signal_peaks(waveform_window.ecg, minimum_distance=35, invert=False)
+            r_peak_indices = cls._find_signal_peaks(waveform_window.ecg, minimum_distance=17, invert=False)
 
         if not r_peak_indices:
             return None, 0.0
@@ -1277,16 +1277,16 @@ class DataManager:
 
     @classmethod
     def _calc_heart_rate_from_signal(cls, samples):
-        peaks = cls._find_signal_peaks(samples, minimum_distance=45)
+        peaks = cls._find_signal_peaks(samples, minimum_distance=22)
         if not peaks:
             return None
 
-        duration_seconds = len(samples) / 250.0
+        duration_seconds = len(samples) / 125.0
         if len(peaks) == 1:
             bpm = 60.0 / max(duration_seconds, 1e-6)
             return bpm if 35.0 <= bpm <= 220.0 else None
 
-        intervals = np.diff(np.asarray(peaks, dtype=np.float32)) / 250.0
+        intervals = np.diff(np.asarray(peaks, dtype=np.float32)) / 125.0
         if len(intervals) == 0:
             return None
         mean_interval = float(np.mean(intervals))
@@ -1318,20 +1318,23 @@ class DataManager:
             ppg_ir.extend(frame.ppg_ir_batch)
             ppg_red.extend(frame.ppg_red_batch)
 
-        if len(ecg) < WAVEFORM_TARGET_SAMPLES or len(ppg_ir) < 2 or len(ppg_red) < 2:
+        if len(ecg) < 2 or len(ppg_ir) < 2 or len(ppg_red) < 2:
             return None
 
-        ecg = ecg[:WAVEFORM_TARGET_SAMPLES]
-        ppg_ir_resampled = cls._resample_signal(ppg_ir, WAVEFORM_TARGET_SAMPLES)
+        # All channels resampled to WAVEFORM_TARGET_SAMPLES (125 Hz target)
+        ecg_resampled     = cls._resample_signal(ecg,     WAVEFORM_TARGET_SAMPLES)
+        ppg_ir_resampled  = cls._resample_signal(ppg_ir,  WAVEFORM_TARGET_SAMPLES)
         ppg_red_resampled = cls._resample_signal(ppg_red, WAVEFORM_TARGET_SAMPLES)
 
-        if len(ppg_ir_resampled) != WAVEFORM_TARGET_SAMPLES or len(ppg_red_resampled) != WAVEFORM_TARGET_SAMPLES:
+        if (len(ecg_resampled) != WAVEFORM_TARGET_SAMPLES
+                or len(ppg_ir_resampled) != WAVEFORM_TARGET_SAMPLES
+                or len(ppg_red_resampled) != WAVEFORM_TARGET_SAMPLES):
             return None
 
         from backend.services.bp_model_service import WaveformWindow
 
         return WaveformWindow(
-            ecg=[float(value) for value in ecg],
+            ecg=ecg_resampled,
             ppg_red=ppg_red_resampled,
             ppg_ir=ppg_ir_resampled,
         )
