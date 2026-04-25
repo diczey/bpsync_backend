@@ -23,7 +23,8 @@ WINDOW_SIZE = LEGACY_WINDOW_SIZE
 
 LEGACY_FRAME_INTERVAL_MS = 100.0
 WAVEFORM_FRAME_INTERVAL_MS = 40.0
-ECG_SAMPLE_INTERVAL_MS = 8.0          # resampled to 125 Hz → 8 ms/sample
+FIRMWARE_ECG_INTERVAL_MS = 4.0        # chest firmware: 250 Hz → 4 ms/sample (for DB storage)
+ECG_SAMPLE_INTERVAL_MS = 8.0          # resampled signal: 125 Hz → 8 ms/sample (for PTT calc)
 WAVEFORM_TARGET_SAMPLES = 1250        # 125 Hz × 10 s
 MIN_QUALITY_RATIO = 0.0
 DB_SYNC_TOLERANCE_MS = 200
@@ -651,13 +652,13 @@ class DataManager:
             return
 
         received_at = self._to_utc_datetime_from_ms(received_at_ms)
-        start_at = received_at - timedelta(milliseconds=ECG_SAMPLE_INTERVAL_MS * (len(ecg_batch) - 1))
+        start_at = received_at - timedelta(milliseconds=FIRMWARE_ECG_INTERVAL_MS * (len(ecg_batch) - 1))
         available_columns = self._get_table_columns(db, "ecg_data")
         rows = []
 
         for index, value in enumerate(ecg_batch):
             row = {
-                "time": start_at + timedelta(milliseconds=ECG_SAMPLE_INTERVAL_MS * index),
+                "time": start_at + timedelta(milliseconds=FIRMWARE_ECG_INTERVAL_MS * index),
                 "user_id": user_id,
                 "device_timestamp_ms": payload.get("ts"),
                 "received_at_ms": received_at_ms,
@@ -713,12 +714,12 @@ class DataManager:
 
         ecg_batch = frame.ecg_batch
         if ecg_batch:
-            start_at = received_at - timedelta(milliseconds=ECG_SAMPLE_INTERVAL_MS * (len(ecg_batch) - 1))
+            start_at = received_at - timedelta(milliseconds=FIRMWARE_ECG_INTERVAL_MS * (len(ecg_batch) - 1))
             available_columns = self._get_table_columns(db, "ecg_data")
             rows = []
             for index, value in enumerate(ecg_batch):
                 row = {
-                    "time": start_at + timedelta(milliseconds=ECG_SAMPLE_INTERVAL_MS * index),
+                    "time": start_at + timedelta(milliseconds=FIRMWARE_ECG_INTERVAL_MS * index),
                     "user_id": user_id,
                     "device_timestamp_ms": frame.ts,
                     "received_at_ms": frame.received_at_ms,
