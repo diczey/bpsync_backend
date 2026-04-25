@@ -17,14 +17,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Scale
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.finalapp.ui.navigation.Screen
 import com.example.finalapp.ui.localization.rememberIsTurkish
 import com.example.finalapp.ui.localization.translateGender
 import com.example.finalapp.ui.localization.translateMessage
@@ -249,7 +255,73 @@ fun ProfileScreen(
                 isEditing = false
             )
 
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Quick links
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ProfileLinkRow(
+                    icon = Icons.Default.Settings,
+                    label = t("Settings", "Ayarlar"),
+                    color = PrimaryBlue,
+                    onClick = { navController.navigate(Screen.Settings.route) }
+                )
+                ProfileLinkRow(
+                    icon = Icons.Default.Notifications,
+                    label = t("Notifications", "Bildirimler"),
+                    color = OrangeMain,
+                    onClick = { navController.navigate(Screen.Notifications.route) }
+                )
+                ProfileLinkRow(
+                    icon = Icons.Default.ExitToApp,
+                    label = t("Logout", "Çıkış Yap"),
+                    color = ErrorRed,
+                    onClick = {
+                        viewModel.logout()
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                )
+            }
+
             Spacer(modifier = Modifier.height(40.dp))
+        }
+    }
+}
+
+@Composable
+private fun ProfileLinkRow(
+    icon: ImageVector,
+    label: String,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White.copy(alpha = 0.7f), RoundedCornerShape(18.dp))
+            .border(1.dp, Color.White, RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(color.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                        .padding(9.dp)
+                ) {
+                    Icon(icon, contentDescription = null, tint = color)
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = ForegroundBlack)
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextMuted, modifier = Modifier.size(20.dp))
         }
     }
 }

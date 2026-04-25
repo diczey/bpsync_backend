@@ -3,6 +3,7 @@ package com.example.finalapp.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.finalapp.data.model.UserDto
+import com.example.finalapp.data.repository.AuthRepository
 import com.example.finalapp.data.repository.ProfileRepository
 import com.example.finalapp.data.repository.RepositoryResult
 import com.example.finalapp.data.repository.SettingsStore
@@ -78,6 +79,7 @@ class ProfileViewModel(
     fun updateWeight(weight: String) = updateField { it.copy(weight = weight) }
     fun updateHeight(height: String) = updateField { it.copy(height = height) }
     fun updateEmail(email: String) = updateField { it.copy(email = email) }
+    fun logout() { AuthRepository().logout() }
 
     private fun saveProfile() {
         viewModelScope.launch {

@@ -16,10 +16,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
@@ -48,11 +47,9 @@ import com.example.finalapp.ui.theme.TextSecondary
 
 private val bottomNavRoutes = setOf(
     Screen.Dashboard.route,
-    Screen.BloodPressure.route,
     Screen.Trends.route,
+    Screen.Measurements.route,
     Screen.Profile.route,
-    Screen.Notifications.route,
-    Screen.Settings.route,
 )
 
 private data class BottomNavItem(
@@ -64,10 +61,8 @@ private data class BottomNavItem(
 
 private val bottomNavItems = listOf(
     BottomNavItem(Screen.Dashboard.route, Icons.Default.Home, "Home", "Ana Sayfa"),
-    BottomNavItem(Screen.BloodPressure.route, Icons.Default.Favorite, "Blood Pressure", "Tansiyon"),
     BottomNavItem(Screen.Trends.route, Icons.Default.ShowChart, "Trends", "Trendler"),
-    BottomNavItem(Screen.Notifications.route, Icons.Default.Notifications, "Alerts", "Bildirimler"),
-    BottomNavItem(Screen.Settings.route, Icons.Default.Settings, "Settings", "Ayarlar"),
+    BottomNavItem(Screen.Measurements.route, Icons.Default.History, "History", "Geçmiş"),
     BottomNavItem(Screen.Profile.route, Icons.Default.Person, "Profile", "Profil"),
 )
 
@@ -124,12 +119,12 @@ private fun BPSyncBottomBar(navController: NavController, currentRoute: String?)
             modifier = Modifier
                 .fillMaxWidth()
                 .height(72.dp)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // First 3 items
-            bottomNavItems.take(3).forEach { item ->
+            // Left 2 items
+            bottomNavItems.take(2).forEach { item ->
                 BottomNavItemView(
                     item = item,
                     isSelected = currentRoute == item.route,
@@ -149,7 +144,7 @@ private fun BPSyncBottomBar(navController: NavController, currentRoute: String?)
             // Center BLE button
             Box(
                 modifier = Modifier
-                    .size(56.dp)
+                    .size(60.dp)
                     .background(PrimaryBlue, CircleShape)
                     .clip(CircleShape)
                     .clickable {
@@ -163,12 +158,12 @@ private fun BPSyncBottomBar(navController: NavController, currentRoute: String?)
                     Icons.Default.Favorite,
                     contentDescription = "BLE",
                     tint = Color.White,
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(28.dp)
                 )
             }
 
-            // Last 3 items
-            bottomNavItems.takeLast(3).forEach { item ->
+            // Right 2 items
+            bottomNavItems.takeLast(2).forEach { item ->
                 BottomNavItemView(
                     item = item,
                     isSelected = currentRoute == item.route,

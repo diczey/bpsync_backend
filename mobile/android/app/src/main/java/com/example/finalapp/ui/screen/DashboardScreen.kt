@@ -39,20 +39,13 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -89,8 +82,6 @@ fun DashboardScreen(
     viewModel: DashboardViewModel = viewModel()
 ) {
     val scrollState = rememberScrollState()
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     val isTurkish = rememberIsTurkish()
@@ -121,157 +112,48 @@ fun DashboardScreen(
     }
     val bleMetricValue = if (bleConnected) t("Ready", "Hazir") else t("Offline", "Bagli degil")
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ModalDrawerSheet(
-                modifier = Modifier.width(280.dp),
-                drawerShape = RoundedCornerShape(topEnd = 32.dp, bottomEnd = 32.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BackgroundGradient)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .verticalScroll(scrollState)
+                .padding(horizontal = 20.dp, vertical = 18.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(t("Welcome back", "Tekrar hos geldin"), fontSize = 12.sp, color = TextSecondary)
+                    Text(uiState.userName.ifBlank { "BPSync" }, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = ForegroundBlack)
+                }
+
+                SurfaceIconButton(
+                    onClick = { navController.navigate(Screen.Notifications.route) },
+                    backgroundColor = Color.White.copy(alpha = 0.9f)
                 ) {
-                    Text(t("Menu", "Menu"), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = ForegroundBlack)
-                    Text(t("Navigate your health", "Sagliginda gezin"), fontSize = 12.sp, color = TextSecondary)
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    GlassCard(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .background(PrimaryGradient, RoundedCornerShape(16.dp))
-                                    .padding(10.dp)
-                            ) {
-                                Icon(Icons.Default.Person, contentDescription = null, tint = Color.White)
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(uiState.userName, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                Text("${t("Health ID", "Saglik ID")}: ${uiState.healthId}", fontSize = 11.sp, color = TextSecondary)
+                    BadgedBox(
+                        badge = {
+                            if (uiState.unreadNotificationCount > 0) {
+                                Badge {
+                                    Text(
+                                        text = if (uiState.unreadNotificationCount > 99) "99+" else uiState.unreadNotificationCount.toString(),
+                                        color = Color.White,
+                                        fontSize = 9.sp
+                                    )
+                                }
                             }
                         }
-                    }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    val menuItems = listOf(
-                        Triple(t("Dashboard", "Kontrol Paneli"), Screen.Dashboard, Icons.Default.Dashboard),
-                        Triple(t("Health Status", "Saglik Durumu"), Screen.HealthStatus, Icons.Default.Security),
-                        Triple(t("Trends", "Trendler"), Screen.Trends, Icons.Default.ShowChart),
-                        Triple(t("Blood Pressure", "Tansiyon"), Screen.BloodPressure, Icons.Default.Favorite),
-                        Triple(t("Heart Rate", "Kalp Atisi"), Screen.Pulse, Icons.Default.Favorite),
-                        Triple(t("PPG Signal", "PPG Sinyali"), Screen.PPG, Icons.Default.Wifi),
-                        Triple(t("Measurements", "Olcumler"), Screen.Measurements, Icons.Default.History),
-                        Triple(t("Profile", "Profil"), Screen.Profile, Icons.Default.Person),
-                        Triple(t("Settings", "Ayarlar"), Screen.Settings, Icons.Default.Settings)
-                    )
-
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
                     ) {
-                        menuItems.forEach { (label, screen, icon) ->
-                            NavigationDrawerItem(
-                                label = { Text(label, fontWeight = FontWeight.Bold) },
-                                selected = false,
-                                onClick = {
-                                    scope.launch { drawerState.close() }
-                                    navController.navigate(screen.route)
-                                },
-                                icon = { Icon(icon, contentDescription = null, tint = PrimaryBlue) },
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier.padding(vertical = 4.dp),
-                                colors = NavigationDrawerItemDefaults.colors(
-                                    unselectedContainerColor = Color.Transparent
-                                )
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Button(
-                        onClick = {
-                            viewModel.logout()
-                            scope.launch { drawerState.close() }
-                            navController.navigate(Screen.Login.route) {
-                                popUpTo(Screen.Dashboard.route) { inclusive = true }
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .height(52.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ErrorRed.copy(alpha = 0.12f))
-                    ) {
-                        Icon(Icons.Default.ExitToApp, contentDescription = null, tint = ErrorRed)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(t("Logout", "Cikis Yap"), color = ErrorRed, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Notifications, contentDescription = t("Notifications", "Bildirimler"), tint = PrimaryBlue, modifier = Modifier.size(22.dp))
                     }
                 }
             }
-        }
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(BackgroundGradient)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 20.dp, vertical = 18.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SurfaceIconButton(
-                        onClick = { scope.launch { drawerState.open() } },
-                        backgroundColor = Color.White.copy(alpha = 0.9f)
-                    ) {
-                        Icon(Icons.Default.Menu, contentDescription = t("Menu", "Menu"), tint = PrimaryBlue, modifier = Modifier.size(24.dp))
-                    }
-
-                    Spacer(modifier = Modifier.width(14.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(t("Welcome back", "Tekrar hos geldin"), fontSize = 12.sp, color = TextSecondary)
-                        Text("BP Sync", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = ForegroundBlack)
-                    }
-
-                    SurfaceIconButton(
-                        onClick = { navController.navigate(Screen.Notifications.route) },
-                        backgroundColor = Color.White.copy(alpha = 0.9f)
-                    ) {
-                        BadgedBox(
-                            badge = {
-                                if (uiState.unreadNotificationCount > 0) {
-                                    Badge {
-                                        Text(
-                                            text = if (uiState.unreadNotificationCount > 99) "99+" else uiState.unreadNotificationCount.toString(),
-                                            color = Color.White,
-                                            fontSize = 9.sp
-                                        )
-                                    }
-                                }
-                            }
-                        ) {
-                            Icon(Icons.Default.Notifications, contentDescription = t("Notifications", "Bildirimler"), tint = PrimaryBlue, modifier = Modifier.size(22.dp))
-                        }
-                    }
-                }
 
                 Spacer(modifier = Modifier.height(18.dp))
 
