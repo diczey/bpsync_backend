@@ -11,12 +11,12 @@ data class TrendsPayload(
 class TrendsRepository {
     private val api = ApiClient.apiService
 
-    suspend fun fetchTrends(period: String = "week"): RepositoryResult<TrendsPayload> {
+    suspend fun fetchTrends(period: String = "week", date: String? = null): RepositoryResult<TrendsPayload> {
         val token = SessionStore.token.value
             ?: return RepositoryResult.Error("No valid session. Please login.")
 
         return try {
-            val response = api.getTrends("Bearer $token", period)
+            val response = api.getTrends("Bearer $token", period, date)
             if (response.isSuccessful && response.body()?.success == true) {
                 val body = response.body()
                 RepositoryResult.Success(

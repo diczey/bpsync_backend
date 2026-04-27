@@ -7,6 +7,8 @@ import com.example.finalapp.data.repository.BleRepository
 import com.example.finalapp.data.repository.ReadingRepository
 import com.example.finalapp.data.repository.RepositoryResult
 import com.example.finalapp.data.repository.TrendsRepository
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +20,7 @@ import kotlinx.coroutines.launch
 
 data class TrendsUiState(
     val selectedPeriod: String = "Weekly",
+    val selectedDate: LocalDate = LocalDate.now(),
     val trends: List<TrendDataDto> = emptyList(),
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
@@ -60,8 +63,8 @@ class TrendsViewModel(
             var wasStreaming = false
             bleRepository.observeBleStatus().collect { status ->
                 if (wasStreaming && !status.streaming) {
-                    // Switch to Daily (most likely to have fresh data) and refresh
-                    _uiState.update { it.copy(selectedPeriod = "Daily") }
+                    // Switch to Daily + reset to today, wait for backend, then refresh
+                    _uiState.update { it.copy(selectedPeriod = "Daily", selectedDate = LocalDate.now()) }
                     delay(12000L)  // 10s window + 2s buffer
                     loadTrends("day")
                 }
@@ -87,12 +90,31 @@ class TrendsViewModel(
         loadTrends(bp)
     }
 
+    fun prevDay() {
+        val newDate = _uiState.value.selectedDate.minusDays(1)
+        _uiState.update { it.copy(selectedDate = newDate) }
+        loadTrends("day")
+    }
+
+    fun nextDay() {
+        val today = LocalDate.now()
+        val newDate = _uiState.value.selectedDate.plusDays(1)
+        if (!newDate.isAfter(today)) {
+            _uiState.update { it.copy(selectedDate = newDate) }
+            loadTrends("day")
+        }
+    }
+
     private fun loadTrends(period: String) {
+        val dateParam = if (period == "day") {
+            _uiState.value.selectedDate.format(DateTimeFormatter.ISO_LOCAL_DATE)
+        } else null
+
         trendsJob?.cancel()
         trendsJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                when (val result = repository.fetchTrends(period)) {
+                when (val result = repository.fetchTrends(period, dateParam)) {
                     is RepositoryResult.Success -> {
                         _uiState.update {
                             it.copy(

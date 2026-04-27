@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,6 +48,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
@@ -72,6 +76,9 @@ fun TrendsScreen(
         "Monthly" -> t("Monthly", "Aylık")
         else -> period
     }
+
+    val dateFormatter = DateTimeFormatter.ofPattern("d MMM yyyy", if (isTurkish) Locale("tr") else Locale.ENGLISH)
+    val today = LocalDate.now()
 
     Box(
         modifier = Modifier
@@ -147,6 +154,41 @@ fun TrendsScreen(
                     fontSize = 12.sp,
                     modifier = Modifier.padding(horizontal = 8.dp)
                 )
+            }
+
+            // Date navigator — only for Daily tab
+            if (uiState.selectedPeriod == "Daily") {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White.copy(alpha = 0.7f), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(onClick = { viewModel.prevDay() }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Previous day", tint = PrimaryBlue)
+                    }
+                    Text(
+                        text = if (uiState.selectedDate == today) t("Today", "Bugün")
+                               else uiState.selectedDate.format(dateFormatter),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ForegroundBlack
+                    )
+                    IconButton(
+                        onClick = { viewModel.nextDay() },
+                        enabled = uiState.selectedDate.isBefore(today)
+                    ) {
+                        Icon(
+                            Icons.Default.ArrowForward,
+                            contentDescription = "Next day",
+                            tint = if (uiState.selectedDate.isBefore(today)) PrimaryBlue else TextMuted
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             // Extract specific trends from backend DTOs

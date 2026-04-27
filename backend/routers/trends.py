@@ -71,40 +71,44 @@ PERIOD_BUCKET_EXPR = {
 @router.get('', response_model=TrendResponse)
 async def get_trends(
     period: str = 'week',
+    date: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_sensor_db),
 ):
     """
-    Return systolic, diastolic, and heart-rate trend data for the requested period.
-    Aggregates points into time buckets (hourly, 6-hourly, daily) via TimescaleDB,
-    and returns absolute min/max/average summaries across the full period.
-
-    Falls back to mock data when no rows exist and USE_MOCK_DATA=true.
+    Return trend data. For period='day', optional date='YYYY-MM-DD' filters
+    to that specific calendar day (UTC). Defaults to today if omitted.
     """
-    back_interval = PERIOD_BACK.get(period, '7 days')
     bucket_expr = PERIOD_BUCKET_EXPR.get(period, PERIOD_BUCKET_EXPR['week'])
 
-    # 1. Fetch total summary (stats across the entire requested period) for the top boxes
+    # Build time filter
+    if period == 'day' and date:
+        time_filter = "time >= :day_start AND time < :day_end"
+        from datetime import datetime, timezone, timedelta
+        day_start = datetime.strptime(date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+        day_end   = day_start + timedelta(days=1)
+        time_params = {'day_start': day_start, 'day_end': day_end}
+    else:
+        back_interval = PERIOD_BACK.get(period, '7 days')
+        time_filter = "time >= NOW() - CAST(:back AS interval)"
+        time_params = {'back': back_interval}
+
+    # 1. Fetch total summary
     summary_row = db.execute(
         text(f'''
-            SELECT 
+            SELECT
                 AVG(systolic) AS avg_sys, MAX(systolic) AS max_sys, MIN(systolic) AS min_sys,
                 AVG(diastolic) AS avg_dia, MAX(diastolic) AS max_dia, MIN(diastolic) AS min_dia,
                 AVG(heart_rate) AS avg_hr, MAX(heart_rate) AS max_hr, MIN(heart_rate) AS min_hr
             FROM bp_readings
             WHERE {sensor_user_clause()}
-              AND time >= NOW() - CAST(:back AS interval)
+              AND {time_filter}
         '''),
-        {
-            **sensor_user_params(current_user),
-            'back': back_interval,
-        },
+        {**sensor_user_params(current_user), **time_params},
     ).fetchone()
-
 
     if not summary_row or summary_row.avg_sys is None:
         return TrendResponse(success=True, trends=[], message='No data for this period.')
-
 
     # 2. Fetch time-bucketed chart data points
     bucket_rows = db.execute(
@@ -116,14 +120,11 @@ async def get_trends(
                 AVG(heart_rate) AS heart_rate
             FROM bp_readings
             WHERE {sensor_user_clause()}
-              AND time >= NOW() - CAST(:back AS interval)
+              AND {time_filter}
             GROUP BY bucket_time
             ORDER BY bucket_time ASC
         '''),
-        {
-            **sensor_user_params(current_user),
-            'back': back_interval,
-        },
+        {**sensor_user_params(current_user), **time_params},
     ).fetchall()
 
     points_sys, points_dia, points_hr = [], [], []

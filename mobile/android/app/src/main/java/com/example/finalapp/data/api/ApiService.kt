@@ -140,7 +140,8 @@ interface ApiService {
     @GET("trends")
     suspend fun getTrends(
         @Header("Authorization") token: String,
-        @Query("period") period: String = "week"
+        @Query("period") period: String = "week",
+        @Query("date") date: String? = null
     ): Response<TrendResponse>
 
     @GET("dashboard/ppg/signal")
