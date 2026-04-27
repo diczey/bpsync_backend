@@ -2,6 +2,10 @@ package com.example.finalapp.ui.navigation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -85,8 +89,12 @@ fun AppNavHost() {
                 BPSyncBottomBar(navController = navController, currentRoute = currentRoute)
             }
         }
-    ) { _ ->
-        NavHost(navController = navController, startDestination = startDestination) {
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = startDestination,
+            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
+        ) {
             composable(Screen.Login.route) { LoginScreen(navController) }
             composable(Screen.Register.route) { RegisterScreen(navController) }
             composable(Screen.Dashboard.route) { DashboardScreen(navController) }

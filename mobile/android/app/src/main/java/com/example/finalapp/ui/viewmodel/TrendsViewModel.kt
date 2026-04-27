@@ -60,9 +60,10 @@ class TrendsViewModel(
             var wasStreaming = false
             bleRepository.observeBleStatus().collect { status ->
                 if (wasStreaming && !status.streaming) {
-                    // Streaming just stopped — wait for backend to process, then refresh
+                    // Switch to Daily (most likely to have fresh data) and refresh
+                    _uiState.update { it.copy(selectedPeriod = "Daily") }
                     delay(12000L)  // 10s window + 2s buffer
-                    loadTrends(backendPeriod())
+                    loadTrends("day")
                 }
                 wasStreaming = status.streaming
             }
