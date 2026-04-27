@@ -19,10 +19,9 @@
  * TX rate: 25 Hz (every 40ms) — only while streaming=true
  *
  * LED modes:
- *   Slow blink (500ms) : advertising, no phone connected
- *   Fast blink (125ms) : phone connected, idle (waiting START)
- *   Solid ON           : streaming + leads on
- *   Double blink       : streaming + leads off
+ *   Slow blink (2s)  : advertising, no phone connected
+ *   Mid blink (500ms): phone connected, idle
+ *   Solid ON         : streaming
  */
 
 #include <ArduinoBLE.h>
@@ -35,14 +34,15 @@
 #define ECG_PIN   A0
 #define LED_PIN   D2
 
-#define ECG_SAMPLE_INTERVAL_US  4000
-#define SEND_INTERVAL_MS        40
-#define ECG_BATCH_SIZE          10
-#define VARIANCE_BUF_SIZE       50
-#define LEAD_ON_VARIANCE        200
-#define MWI_SIZE                30
-#define REFRACTORY_MS           250
-#define THRESHOLD_RATIO         0.25f
+#define ECG_SAMPLE_INTERVAL_US   4000
+#define SEND_INTERVAL_MS         40
+#define ECG_BATCH_SIZE           10
+#define VARIANCE_BUF_SIZE        100
+#define LEAD_ON_VARIANCE         200
+#define MWI_SIZE                 30
+#define REFRACTORY_MS            250
+#define THRESHOLD_RATIO          0.35f
+#define CHEST_IDLE_DISCONNECT_MS 60000
 
 struct __attribute__((packed)) ChestPacket {
     uint8_t  ep;
@@ -80,16 +80,17 @@ static uint16_t pktSeq    = 0;
 static bool     streaming = false;
 
 // LED
-enum LedMode { LED_BLINK_SLOW, LED_BLINK_FAST, LED_SOLID, LED_BLINK_SQI };
-static LedMode       ledMode       = LED_BLINK_SLOW;
-static unsigned long tLed          = 0;
-static bool          ledState      = false;
-static uint8_t       sqiBlinkPhase = 0;
+enum LedMode { LED_BLINK_SLOW, LED_BLINK_MID, LED_SOLID };
+static LedMode       ledMode  = LED_BLINK_SLOW;
+static unsigned long tLed     = 0;
+static bool          ledState = false;
 
 // Timers
 static unsigned long lastSampleUs = 0;
 static unsigned long tSend        = 0;
 static unsigned long lastPeakMs   = 0;
+static unsigned long tIdleStart   = 0;
+static bool          idleActive   = false;
 
 void initBLE();
 void initHardware();
@@ -108,7 +109,6 @@ void setup() {
     Serial.println("==============================================");
     Serial.println("  BPSync Chest Module");
     Serial.println("  Seeed XIAO nRF52840  |  ArduinoBLE");
-    Serial.println("  Mode: Direct Peripheral to Phone");
     Serial.println("==============================================");
     initHardware();
     initBLE();
@@ -131,6 +131,16 @@ void loop() {
         sendChestPacket();
         ep_flag     = 0;
         ecgBatchIdx = 0;
+    }
+
+    // Idle disconnect: 1 minute after STOP with no new START
+    if (idleActive && !streaming && BLE.connected() &&
+        (nowMs - tIdleStart) >= CHEST_IDLE_DISCONNECT_MS) {
+        Serial.println("[PHONE] Idle timeout — disconnecting.");
+        idleActive = false;
+        tIdleStart = 0;
+        BLEDevice central = BLE.central();
+        if (central) central.disconnect();
     }
 
     updateLED();
@@ -164,18 +174,21 @@ void initBLE() {
 }
 
 void onBLEConnect(BLEDevice central) {
+    tIdleStart = 0;
+    idleActive = false;
+    setLedMode(LED_BLINK_MID);
     Serial.println("[PHONE] Connected: " + String(central.address()));
-    Serial.println("[PHONE] Send 'START' to CmdChar (29B10002) to begin streaming.");
-    setLedMode(LED_BLINK_FAST);
+    Serial.println("[PHONE] Send 'START' to begin streaming.");
 }
 
 void onBLEDisconnect(BLEDevice central) {
     (void)central;
-    streaming = false;
-    pktSeq    = 0;
+    streaming  = false;
+    pktSeq     = 0;
+    tIdleStart = 0;
+    idleActive = false;
     setLedMode(LED_BLINK_SLOW);
     Serial.println("[PHONE] Disconnected — re-advertising...");
-    Serial.println("[ADV]   Advertising as 'BPSync-Chest'...");
     BLE.advertise();
 }
 
@@ -188,15 +201,20 @@ void onCmdWrite(BLEDevice central, BLECharacteristic characteristic) {
     memcpy(cmd, characteristic.value(), n);
     cmd[n] = '\0';
     Serial.print("[CMD]   Received: '"); Serial.print(cmd); Serial.println("'");
+
     if (strcmp(cmd, "START") == 0) {
-        pktSeq    = 0;
-        streaming = true;
-        setLedMode(leadsOn ? LED_SOLID : LED_BLINK_SQI);
+        pktSeq     = 0;
+        streaming  = true;
+        tIdleStart = 0;
+        idleActive = false;
+        setLedMode(LED_SOLID);
         Serial.println("[SESSION] Streaming STARTED — seq=0, TX @ 25 Hz");
     } else if (strcmp(cmd, "STOP") == 0) {
-        streaming = false;
-        pktSeq    = 0;
-        setLedMode(LED_BLINK_FAST);
+        streaming  = false;
+        pktSeq     = 0;
+        tIdleStart = millis();
+        idleActive = true;
+        setLedMode(LED_BLINK_MID);
         Serial.println("[SESSION] Streaming STOPPED");
     } else {
         Serial.print("[CMD]   Unknown: '"); Serial.print(cmd); Serial.println("'");
@@ -221,14 +239,8 @@ void sampleECG() {
         bool wasOn = leadsOn;
         leadsOn  = ((int32_t)(varSum / VARIANCE_BUF_SIZE) > LEAD_ON_VARIANCE);
         qi_c_val = leadsOn ? 1 : 0;
-        if (!wasOn && leadsOn) {
-            Serial.println("[ECG]   Leads ON — signal OK");
-            if (streaming) setLedMode(LED_SOLID);
-        }
-        if (wasOn && !leadsOn) {
-            Serial.println("[ECG]   Leads OFF — check electrodes");
-            if (streaming) setLedMode(LED_BLINK_SQI);
-        }
+        if (!wasOn && leadsOn)  Serial.println("[ECG]   Leads ON  — signal OK");
+        if (wasOn  && !leadsOn) Serial.println("[ECG]   Leads OFF — check electrodes");
     }
 
     float rawf = (float)raw;
@@ -258,9 +270,7 @@ void sampleECG() {
     if (leadsOn && mwi > mwiThresh && (nowMs - lastPeakMs) > (unsigned long)REFRACTORY_MS) {
         ep_flag    = 1;
         lastPeakMs = nowMs;
-        Serial.print("[ECG]   R-peak  mwi="); Serial.print(mwi, 1);
-        Serial.print("  thresh="); Serial.print(mwiThresh, 1);
-        Serial.print("  seq="); Serial.println(pktSeq);
+        // R-peak detected — no raw data log
     }
 }
 
@@ -274,36 +284,24 @@ void sendChestPacket() {
     for (int i = 0; i < ECG_BATCH_SIZE; i++)
         pkt.ecg[i] = (i < count) ? ecgBatch[(start + i) % ECG_BATCH_SIZE] : 0;
     dataChar.writeValue((uint8_t*)&pkt, sizeof(pkt));
-    if (pktSeq % 50 == 0) {
-        Serial.print("[TX]    seq="); Serial.print(pkt.seq);
-        Serial.print("  ep="); Serial.print(pkt.ep);
-        Serial.print("  qi_c="); Serial.print(pkt.qi_c);
-        Serial.print("  ecg[0]="); Serial.println(pkt.ecg[0]);
-    }
 }
 
 void setLedMode(LedMode mode) {
     if (ledMode == mode) return;
-    ledMode = mode; sqiBlinkPhase = 0; tLed = 0;
+    ledMode = mode; tLed = 0;
 }
 
 void updateLED() {
     unsigned long now = millis();
     switch (ledMode) {
         case LED_BLINK_SLOW:
-            if (now - tLed >= 500) { ledState = !ledState; digitalWrite(LED_PIN, ledState); tLed = now; } break;
-        case LED_BLINK_FAST:
-            if (now - tLed >= 125) { ledState = !ledState; digitalWrite(LED_PIN, ledState); tLed = now; } break;
-        case LED_SOLID:
-            digitalWrite(LED_PIN, HIGH); ledState = true; break;
-        case LED_BLINK_SQI: {
-            static const uint16_t sqiTiming[4] = {80, 80, 80, 760};
-            if (now - tLed >= sqiTiming[sqiBlinkPhase]) {
-                sqiBlinkPhase = (sqiBlinkPhase + 1) % 4;
-                digitalWrite(LED_PIN, (sqiBlinkPhase == 0 || sqiBlinkPhase == 2));
-                tLed = now;
-            }
+            if (now - tLed >= 2000) { ledState = !ledState; digitalWrite(LED_PIN, ledState); tLed = now; }
             break;
-        }
+        case LED_BLINK_MID:
+            if (now - tLed >= 500) { ledState = !ledState; digitalWrite(LED_PIN, ledState); tLed = now; }
+            break;
+        case LED_SOLID:
+            digitalWrite(LED_PIN, HIGH); ledState = true;
+            break;
     }
 }

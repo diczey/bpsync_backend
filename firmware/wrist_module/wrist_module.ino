@@ -105,18 +105,17 @@ bool     phoneConnected = false;
 // ──────────────────────────────────────────────────────────────
 //  LED
 // ──────────────────────────────────────────────────────────────
-enum LedMode { LED_BLINK_SLOW, LED_BLINK_FAST, LED_SOLID, LED_BLINK_SQI };
-LedMode       ledMode       = LED_BLINK_SLOW;
-unsigned long tLed          = 0;
-bool          ledState      = false;
-uint8_t       sqiBlinkPhase = 0;
+enum LedMode { LED_BLINK_SLOW, LED_BLINK_MID, LED_SOLID };
+LedMode       ledMode  = LED_BLINK_SLOW;
+unsigned long tLed     = 0;
+bool          ledState = false;
 
 // ──────────────────────────────────────────────────────────────
 //  BUTTON
 // ──────────────────────────────────────────────────────────────
 #define BTN_DEBOUNCE_MS          50
 #define BTN_LONG_PRESS_MS        3000
-#define PHONE_IDLE_DISCONNECT_MS 15000
+#define PHONE_IDLE_DISCONNECT_MS 60000
 
 bool          btnLastRaw    = HIGH;
 bool          btnStable     = HIGH;
@@ -290,7 +289,7 @@ void onPhoneConnect(BLEDevice central) {
     streaming       = false;
     seqNum          = 0;
     tPhoneConnected = millis();
-    setLedMode(LED_BLINK_FAST);
+    setLedMode(LED_BLINK_MID);
     Serial.println("[PHONE] Connected: " + String(central.address()));
     Serial.println("[PHONE] Send 'START' to CmdChar (19B10002) to begin streaming.");
 }
@@ -322,12 +321,12 @@ void onCmdWrite(BLEDevice central, BLECharacteristic characteristic) {
         streaming       = true;
         seqNum          = 0;
         tPhoneConnected = 0;
-        setLedMode(qi_w ? LED_SOLID : LED_BLINK_SQI);
+        setLedMode(LED_SOLID);
         Serial.println("[SESSION] Streaming STARTED — seq=0, TX @ 25 Hz");
     } else if (strcmp(cmd, "STOP") == 0) {
         streaming       = false;
         tPhoneConnected = millis();
-        setLedMode(LED_BLINK_FAST);
+        setLedMode(LED_BLINK_MID);
         Serial.println("[SESSION] Streaming STOPPED");
     } else {
         Serial.print("[CMD]   Unknown: '"); Serial.print(cmd); Serial.println("'");
@@ -366,7 +365,7 @@ void calculateSQI() {
     qi_w = (motionOK && ppgOK) ? 1 : 0;
 
     if (streaming && phoneConnected) {
-        setLedMode(qi_w ? LED_SOLID : LED_BLINK_SQI);
+        setLedMode(LED_SOLID);
     }
 }
 
@@ -473,14 +472,14 @@ void handleButton() {
             if (streaming) {
                 streaming       = false;
                 tPhoneConnected = millis();
-                setLedMode(phoneConnected ? LED_BLINK_FAST : LED_BLINK_SLOW);
+                setLedMode(phoneConnected ? LED_BLINK_MID : LED_BLINK_SLOW);
                 Serial.println("[BTN]   Short press — Streaming STOPPED");
             } else {
                 if (phoneConnected) {
                     streaming       = true;
                     seqNum          = 0;
                     tPhoneConnected = 0;
-                    setLedMode(qi_w ? LED_SOLID : LED_BLINK_SQI);
+                    setLedMode(LED_SOLID);
                     Serial.println("[BTN]   Short press — Streaming STARTED, seq=0");
                 } else {
                     Serial.println("[BTN]   Short press — phone not connected");
@@ -496,26 +495,23 @@ void handleButton() {
 // ══════════════════════════════════════════════════════════════
 void setLedMode(LedMode mode) {
     if (ledMode == mode) return;
-    ledMode = mode; sqiBlinkPhase = 0; tLed = 0;
+    ledMode = mode; tLed = 0;
 }
 
 void updateLED() {
     unsigned long now = millis();
     switch (ledMode) {
         case LED_BLINK_SLOW:
-            if (now - tLed >= 500) { ledState = !ledState; digitalWrite(LED_PIN, ledState); tLed = now; } break;
-        case LED_BLINK_FAST:
-            if (now - tLed >= 125) { ledState = !ledState; digitalWrite(LED_PIN, ledState); tLed = now; } break;
-        case LED_SOLID:
-            digitalWrite(LED_PIN, HIGH); ledState = true; break;
-        case LED_BLINK_SQI: {
-            static const uint16_t sqiTiming[4] = {80, 80, 80, 760};
-            if (now - tLed >= sqiTiming[sqiBlinkPhase]) {
-                sqiBlinkPhase = (sqiBlinkPhase + 1) % 4;
-                digitalWrite(LED_PIN, (sqiBlinkPhase == 0 || sqiBlinkPhase == 2));
-                tLed = now;
-            }
+            // 2s period — not connected
+            if (now - tLed >= 2000) { ledState = !ledState; digitalWrite(LED_PIN, ledState); tLed = now; }
             break;
-        }
+        case LED_BLINK_MID:
+            // 500ms period — connected, idle
+            if (now - tLed >= 500) { ledState = !ledState; digitalWrite(LED_PIN, ledState); tLed = now; }
+            break;
+        case LED_SOLID:
+            // Solid ON — streaming
+            digitalWrite(LED_PIN, HIGH); ledState = true;
+            break;
     }
 }
